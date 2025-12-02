@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './ChineseSimplifier.css';
 import { pinyin } from 'pinyin-pro';
-import lexicon from 'chinese-lexicon';
 
 const HSK_LEVELS = [
   { value: 1, label: 'HSK 1 (150 words)' },
@@ -259,18 +258,6 @@ Respond with ONLY a JSON array, no other text.`
     // Get pinyin
     const charPinyin = pinyin(char, { toneType: 'symbol' });
 
-    // Get definition from lexicon
-    const results = lexicon(char);
-    let definition = '';
-    if (results && results.length > 0) {
-      // Get first definition, limit to 50 characters
-      const defs = results[0].definitions || [];
-      definition = defs.slice(0, 2).join('; ');
-      if (definition.length > 60) {
-        definition = definition.substring(0, 60) + '...';
-      }
-    }
-
     const isActive = activeCharIndex === index || hoverActive;
 
     return (
@@ -291,7 +278,6 @@ Respond with ONLY a JSON array, no other text.`
         {isActive && showTooltips && (
           <span className="char-tooltip">
             <div className="tooltip-pinyin">{charPinyin}</div>
-            {definition && <div className="tooltip-meaning">{definition}</div>}
           </span>
         )}
       </span>
