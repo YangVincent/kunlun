@@ -46,7 +46,7 @@ export default function ChineseSimplifier() {
   const [annotations, setAnnotations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showTooltips, setShowTooltips] = useState(true);
+  const [displayMode, setDisplayMode] = useState('tooltips'); // 'none', 'pinyin', 'tooltips'
   const [copySuccess, setCopySuccess] = useState(false);
   const [activeCharIndex, setActiveCharIndex] = useState(null);
   const [phrases, setPhrases] = useState([]);
@@ -387,19 +387,36 @@ Respond with ONLY a JSON array, no other text.`
     setFetchedPhraseTranslations({});
   }, [fetchedText]);
 
+
   // Effect to segment and translate when tooltips are enabled
   useEffect(() => {
-    if (showTooltips && simplifiedText && phrases.length === 0) {
+    if (displayMode === 'tooltips' && simplifiedText && phrases.length === 0) {
       segmentAndTranslate(simplifiedText);
     }
-  }, [showTooltips, simplifiedText]);
+  }, [displayMode, simplifiedText]);
 
   // Effect to segment and translate fetched text
   useEffect(() => {
-    if (showTooltips && fetchedText && fetchedPhrases.length === 0) {
+    if (displayMode === 'tooltips' && fetchedText && fetchedPhrases.length === 0) {
       segmentAndTranslateFetched(fetchedText);
     }
-  }, [showTooltips, fetchedText]);
+  }, [displayMode, fetchedText]);
+
+  // Helper function to render text with pinyin above characters
+  const renderTextWithPinyin = (text) => {
+    return text.split('').map((char, idx) => {
+      if (/[\u4e00-\u9fa5]/.test(char)) {
+        const charPinyin = pinyin(char, { toneType: 'symbol', type: 'array' })[0];
+        return (
+          <ruby key={idx}>
+            {char}
+            <rt>{charPinyin}</rt>
+          </ruby>
+        );
+      }
+      return <span key={idx}>{char}</span>;
+    });
+  };
 
   // Component to render a phrase with tooltip
   const ChinesePhrase = ({ phrase, index, translations }) => {
@@ -475,7 +492,7 @@ Respond with ONLY a JSON array, no other text.`
         }}
       >
         {phrase.text}
-        {isActive && showTooltips && (
+        {isActive && displayMode === 'tooltips' && (
           <span ref={tooltipRef} className="char-tooltip" style={tooltipStyle}>
             <div className="tooltip-pinyin">{phrasePinyin}</div>
             <div className="tooltip-translation">{translation}</div>
@@ -551,7 +568,7 @@ Respond with ONLY a JSON array, no other text.`
         }}
       >
         {char}
-        {isActive && showTooltips && (
+        {isActive && displayMode === 'tooltips' && (
           <span ref={tooltipRef} className="char-tooltip" style={tooltipStyle}>
             <div className="tooltip-pinyin">{charPinyin}</div>
           </span>
@@ -690,6 +707,26 @@ Respond with ONLY a JSON array, no other text.`
                 Fetched Article
               </h2>
               <div className="action-buttons">
+                <div className="display-mode-selector">
+                  <button
+                    onClick={() => setDisplayMode('none')}
+                    className={`mode-option ${displayMode === 'none' ? 'active' : ''}`}
+                  >
+                    Plain
+                  </button>
+                  <button
+                    onClick={() => setDisplayMode('pinyin')}
+                    className={`mode-option ${displayMode === 'pinyin' ? 'active' : ''}`}
+                  >
+                    Pinyin
+                  </button>
+                  <button
+                    onClick={() => setDisplayMode('tooltips')}
+                    className={`mode-option ${displayMode === 'tooltips' ? 'active' : ''}`}
+                  >
+                    Tooltips
+                  </button>
+                </div>
                 <button
                   onClick={simplifyText}
                   disabled={isLoading}
@@ -708,7 +745,11 @@ Respond with ONLY a JSON array, no other text.`
             </div>
 
             <div className="output-text">
-              {showTooltips ? (
+              {displayMode === 'pinyin' ? (
+                <div className="pinyin-mode">
+                  {renderTextWithPinyin(fetchedText)}
+                </div>
+              ) : displayMode === 'tooltips' ? (
                 <div className="tooltip-mode">
                   {fetchedPhrases.length > 0 ? (
                     fetchedPhrases.map((phrase, idx) => (
@@ -736,12 +777,26 @@ Respond with ONLY a JSON array, no other text.`
                 Simplified Version (HSK {hskLevel})
               </h2>
               <div className="action-buttons">
-                <button
-                  onClick={() => setShowTooltips(!showTooltips)}
-                  className="secondary-btn"
-                >
-                  {showTooltips ? 'Hide Tooltips' : 'Show Tooltips'}
-                </button>
+                <div className="display-mode-selector">
+                  <button
+                    onClick={() => setDisplayMode('none')}
+                    className={`mode-option ${displayMode === 'none' ? 'active' : ''}`}
+                  >
+                    Plain
+                  </button>
+                  <button
+                    onClick={() => setDisplayMode('pinyin')}
+                    className={`mode-option ${displayMode === 'pinyin' ? 'active' : ''}`}
+                  >
+                    Pinyin
+                  </button>
+                  <button
+                    onClick={() => setDisplayMode('tooltips')}
+                    className={`mode-option ${displayMode === 'tooltips' ? 'active' : ''}`}
+                  >
+                    Tooltips
+                  </button>
+                </div>
                 <button
                   onClick={handleCopyText}
                   className={`secondary-btn ${copySuccess ? 'copy-success' : ''}`}
@@ -752,7 +807,11 @@ Respond with ONLY a JSON array, no other text.`
             </div>
 
             <div className="output-text">
-              {showTooltips ? (
+              {displayMode === 'pinyin' ? (
+                <div className="pinyin-mode">
+                  {renderTextWithPinyin(simplifiedText)}
+                </div>
+              ) : displayMode === 'tooltips' ? (
                 <div className="tooltip-mode">
                   {phrases.length > 0 ? (
                     phrases.map((phrase, idx) => (

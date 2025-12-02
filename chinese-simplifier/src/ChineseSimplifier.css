@@ -597,8 +597,102 @@
   color: #00a000 !important;
 }
 
+/* Display mode selector (segmented control) */
+.display-mode-selector {
+  display: inline-flex;
+  background: var(--color-paper-dark);
+  border: var(--border-width) solid var(--color-ink);
+  border-radius: 6px;
+  overflow: hidden;
+  gap: 0;
+}
+
+.mode-option {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  border-right: 1px solid var(--color-paper-darker);
+  position: relative;
+}
+
+.mode-option:last-child {
+  border-right: none;
+}
+
+.mode-option:hover:not(.active) {
+  background: rgba(200, 53, 30, 0.05);
+}
+
+.mode-option.active {
+  background: var(--color-vermillion);
+  color: white;
+  font-weight: 600;
+}
+
+.mode-option:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(200, 53, 30, 0.3);
+}
+
+@media (max-width: 768px) {
+  .display-mode-selector {
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+
+  .mode-option {
+    flex: 1;
+    padding: 0.6rem 0.5rem;
+    font-size: 0.85rem;
+  }
+}
+
 .tooltip-mode {
   line-height: 2.5;
+}
+
+/* Pinyin display mode */
+.pinyin-mode {
+  line-height: 2.8;
+  font-size: 1.1rem;
+}
+
+.pinyin-mode ruby {
+  ruby-align: center;
+  ruby-position: over;
+}
+
+.pinyin-mode rt {
+  font-family: var(--font-mono);
+  font-size: 0.65em;
+  color: var(--color-vermillion);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-align: center;
+  user-select: none;
+  padding: 0 0.1em;
+}
+
+.pinyin-mode ruby + ruby {
+  margin-left: 0.05em;
+}
+
+@media (max-width: 768px) {
+  .pinyin-mode {
+    font-size: 1rem;
+    line-height: 2.6;
+  }
+
+  .pinyin-mode rt {
+    font-size: 0.6em;
+  }
 }
 
 .interactive-char {
