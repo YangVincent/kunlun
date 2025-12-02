@@ -120,9 +120,70 @@ app.post('/api/fetch-url', async (req, res) => {
 
     console.log('[Backend] Extracted text length:', text.length);
     console.log('[Backend] First 200 chars:', text.substring(0, 200));
-    console.log('[Backend] Sending response...');
 
-    res.json({ text });
+    // Use Claude to filter and extract only the main article content
+    console.log('[Backend] Filtering content with Claude...');
+    const apiKey = process.env.VITE_ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      console.log('[Backend] No API key, skipping LLM filtering');
+      return res.json({ text });
+    }
+
+    try {
+      const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-haiku-20241022',
+          max_tokens: 4096,
+          messages: [{
+            role: 'user',
+            content: `You are extracting the main article content from a scraped web page. The text below may contain navigation menus, headers, footers, related articles, comments, advertisements, and other non-article content.
+
+Please extract and return the article title and main article text. Remove:
+- Navigation menus and links
+- Website headers and footers
+- Related articles or article lists
+- Comments sections
+- Advertisements
+- Social media sharing buttons
+- Author bios (unless it's part of the article)
+- Any repeated or duplicate content
+
+IMPORTANT: Keep the article title at the beginning, followed by the article content.
+
+Return only the article title and core article content in Chinese. Preserve paragraph breaks. Do not add any explanation or English text - just return the filtered Chinese article with its title.
+
+Text to filter:
+${text}`
+          }]
+        })
+      });
+
+      const claudeData = await claudeResponse.json();
+
+      if (claudeResponse.ok && claudeData.content && claudeData.content[0]) {
+        const filteredText = claudeData.content[0].text.trim();
+        console.log('[Backend] Filtered text length:', filteredText.length);
+        console.log('[Backend] Filtered first 200 chars:', filteredText.substring(0, 200));
+        console.log('[Backend] Sending filtered response...');
+        res.json({ text: filteredText });
+      } else {
+        console.log('[Backend] Claude filtering failed, using original text');
+        console.log('[Backend] Sending response...');
+        res.json({ text });
+      }
+    } catch (claudeError) {
+      console.error('[Backend] Error calling Claude for filtering:', claudeError);
+      console.log('[Backend] Falling back to original text');
+      console.log('[Backend] Sending response...');
+      res.json({ text });
+    }
   } catch (error) {
     console.error('[Backend] Error fetching URL:', error);
     res.status(500).json({ error: error.message });

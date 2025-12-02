@@ -41,6 +41,7 @@ export default function ChineseSimplifier() {
   const [urlInput, setUrlInput] = useState('');
   const [inputMode, setInputMode] = useState('url'); // 'text' or 'url'
   const [hskLevel, setHskLevel] = useState(3);
+  const [fetchedText, setFetchedText] = useState(''); // For URL-fetched article display
   const [simplifiedText, setSimplifiedText] = useState('');
   const [annotations, setAnnotations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -50,6 +51,8 @@ export default function ChineseSimplifier() {
   const [activeCharIndex, setActiveCharIndex] = useState(null);
   const [phrases, setPhrases] = useState([]);
   const [phraseTranslations, setPhraseTranslations] = useState({});
+  const [fetchedPhrases, setFetchedPhrases] = useState([]);
+  const [fetchedPhraseTranslations, setFetchedPhraseTranslations] = useState({});
 
   // Close tooltip when clicking outside
   useEffect(() => {
@@ -77,7 +80,9 @@ export default function ChineseSimplifier() {
     console.log('[Frontend] Starting URL fetch for:', urlInput);
     setIsLoading(true);
     setError('');
-    setInputText('');
+    setFetchedText('');
+    setSimplifiedText('');
+    setAnnotations([]);
 
     try {
       console.log('[Frontend] Sending request to backend...');
@@ -100,8 +105,8 @@ export default function ChineseSimplifier() {
       const data = await response.json();
       console.log('[Frontend] Received text length:', data.text?.length);
       console.log('[Frontend] First 200 chars:', data.text?.substring(0, 200));
-      setInputText(data.text);
-      setInputMode('text');
+      setFetchedText(data.text);
+      setInputText(data.text); // Also set as input for simplification
     } catch (err) {
       console.error('[Frontend] Error:', err);
       setError(`Error fetching URL: ${err.message}`);
@@ -238,9 +243,36 @@ Respond with ONLY a JSON array, no other text.`
 
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(simplifiedText);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
+      // Try modern clipboard API first (works in HTTPS/localhost)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(simplifiedText);
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } else {
+        // Fallback for HTTP contexts
+        const textArea = document.createElement('textarea');
+        textArea.value = simplifiedText;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+          const successful = document.execCommand('copy');
+          if (successful) {
+            setCopySuccess(true);
+            setTimeout(() => setCopySuccess(false), 2000);
+          } else {
+            setError('Failed to copy text');
+          }
+        } catch (err) {
+          setError('Failed to copy text');
+        } finally {
+          document.body.removeChild(textArea);
+        }
+      }
     } catch (err) {
       setError('Failed to copy text');
     }
@@ -296,11 +328,64 @@ Respond with ONLY a JSON array, no other text.`
     }
   };
 
+  // Segment and translate for fetched text
+  const segmentAndTranslateFetched = async (text) => {
+    if (!text) return;
+
+    try {
+      const segmentResponse = await fetch('http://137.184.55.135:3001/api/segment-text', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!segmentResponse.ok) {
+        throw new Error('Failed to segment text');
+      }
+
+      const { phrases: segmentedPhrases } = await segmentResponse.json();
+      setFetchedPhrases(segmentedPhrases);
+
+      const chinesePhrases = segmentedPhrases
+        .filter(p => /[\u4e00-\u9fa5]/.test(p.text))
+        .map(p => p.text);
+
+      if (chinesePhrases.length > 0) {
+        const definitionResponse = await fetch('http://137.184.55.135:3001/api/lookup-definitions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phrases: chinesePhrases }),
+        });
+
+        const { definitions } = await definitionResponse.json();
+
+        const translations = {};
+        for (const [phrase, data] of Object.entries(definitions)) {
+          translations[phrase] = data.definitions;
+        }
+
+        setFetchedPhraseTranslations(translations);
+      }
+    } catch (err) {
+      console.error('Error segmenting/translating fetched text:', err);
+    }
+  };
+
   // Reset phrases when simplified text changes
   useEffect(() => {
     setPhrases([]);
     setPhraseTranslations({});
   }, [simplifiedText]);
+
+  // Reset fetched phrases when fetched text changes
+  useEffect(() => {
+    setFetchedPhrases([]);
+    setFetchedPhraseTranslations({});
+  }, [fetchedText]);
 
   // Effect to segment and translate when tooltips are enabled
   useEffect(() => {
@@ -309,8 +394,15 @@ Respond with ONLY a JSON array, no other text.`
     }
   }, [showTooltips, simplifiedText]);
 
+  // Effect to segment and translate fetched text
+  useEffect(() => {
+    if (showTooltips && fetchedText && fetchedPhrases.length === 0) {
+      segmentAndTranslateFetched(fetchedText);
+    }
+  }, [showTooltips, fetchedText]);
+
   // Component to render a phrase with tooltip
-  const ChinesePhrase = ({ phrase, index }) => {
+  const ChinesePhrase = ({ phrase, index, translations }) => {
     const [hoverActive, setHoverActive] = useState(false);
     const [tooltipStyle, setTooltipStyle] = useState({ opacity: 0 });
     const spanRef = useRef(null);
@@ -323,7 +415,7 @@ Respond with ONLY a JSON array, no other text.`
 
     // Get pinyin for the phrase
     const phrasePinyin = pinyin(phrase.text, { toneType: 'symbol' });
-    const translation = phraseTranslations[phrase.text] || 'Loading...';
+    const translation = translations[phrase.text] || 'Loading...';
 
     const isActive = activeCharIndex === index || hoverActive;
 
@@ -589,6 +681,52 @@ Respond with ONLY a JSON array, no other text.`
           </div>
         )}
 
+        {/* Fetched Article Display */}
+        {fetchedText && (
+          <div className="card output-card">
+            <div className="card-header">
+              <h2 className="card-title">
+                <span className="title-icon">📄</span>
+                Fetched Article
+              </h2>
+              <div className="action-buttons">
+                <button
+                  onClick={simplifyText}
+                  disabled={isLoading}
+                  className="primary-btn"
+                >
+                  {isLoading ? (
+                    <span className="btn-loading">
+                      <span className="spinner"></span>
+                      <span>Processing...</span>
+                    </span>
+                  ) : (
+                    <span>Simplify to HSK {hskLevel}</span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="output-text">
+              {showTooltips ? (
+                <div className="tooltip-mode">
+                  {fetchedPhrases.length > 0 ? (
+                    fetchedPhrases.map((phrase, idx) => (
+                      <ChinesePhrase key={idx} phrase={phrase} index={idx} translations={fetchedPhraseTranslations} />
+                    ))
+                  ) : (
+                    fetchedText.split('').map((char, idx) => (
+                      <ChineseChar key={idx} char={char} index={idx} />
+                    ))
+                  )}
+                </div>
+              ) : (
+                <span>{fetchedText}</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Output Section */}
         {simplifiedText && (
           <div className="card output-card">
@@ -618,7 +756,7 @@ Respond with ONLY a JSON array, no other text.`
                 <div className="tooltip-mode">
                   {phrases.length > 0 ? (
                     phrases.map((phrase, idx) => (
-                      <ChinesePhrase key={idx} phrase={phrase} index={idx} />
+                      <ChinesePhrase key={idx} phrase={phrase} index={idx} translations={phraseTranslations} />
                     ))
                   ) : (
                     simplifiedText.split('').map((char, idx) => (
