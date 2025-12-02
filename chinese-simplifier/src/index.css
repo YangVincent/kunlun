@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global reset for the custom design */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Crimson Pro', serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #faf8f5;
+}
+
+#root {
+  margin: 0;
+  padding: 0;
+}
