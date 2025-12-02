@@ -1,0 +1,26 @@
+name: kunlun-chinese-simplifier
+region: nyc
+
+services:
+  - name: web
+    github:
+      repo: YangVincent/kunlun
+      branch: main
+      deploy_on_push: true
+    source_dir: /chinese-simplifier
+    build_command: npm install && npm run build
+    run_command: npm run start
+    http_port: 3001
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    envs:
+      - key: VITE_ANTHROPIC_API_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: NODE_ENV
+        value: production
+    health_check:
+      http_path: /
+      initial_delay_seconds: 10
+    routes:
+      - path: /

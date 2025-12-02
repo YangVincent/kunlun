@@ -2,13 +2,24 @@ import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import 'dotenv/config';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
+const isProduction = process.env.NODE_ENV === 'production';
 
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from dist in production
+if (isProduction) {
+  app.use(express.static(join(__dirname, 'dist')));
+}
 
 // Proxy endpoint for Anthropic API
 app.post('/api/claude', async (req, res) => {
@@ -124,6 +135,14 @@ app.post('/api/fetch-url', async (req, res) => {
   }
 });
 
+// SPA fallback - serve index.html for all non-API routes in production
+if (isProduction) {
+  app.get('*', (req, res) => {
+    res.sendFile(join(__dirname, 'dist', 'index.html'));
+  });
+}
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Backend server running on http://0.0.0.0:${PORT}`);
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
+  console.log(`Environment: ${isProduction ? 'production' : 'development'}`);
 });
