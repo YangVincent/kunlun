@@ -175,8 +175,6 @@ ANNOTATIONS:
 
         // Trigger DOM mutation to help extensions re-scan
         setTimeout(() => {
-          setForceUpdate(prev => prev + 1);
-
           // Dispatch custom event that extensions might listen for
           const event = new CustomEvent('contentUpdated', { detail: { text } });
           document.dispatchEvent(event);
