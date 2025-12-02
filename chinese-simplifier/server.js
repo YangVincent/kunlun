@@ -280,6 +280,91 @@ app.post('/api/lookup-definitions', async (req, res) => {
   }
 });
 
+// Endpoint to fetch news articles from Chinese news sites
+app.post('/api/fetch-news', async (req, res) => {
+  try {
+    const { sources } = req.body;
+    console.log('[Backend] Fetching news from sources:', sources);
+
+    const allArticles = [];
+
+    for (const source of sources) {
+      try {
+        console.log(`[Backend] Fetching from ${source.name}:`, source.url);
+        const response = await fetch(source.url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+
+        if (!response.ok) {
+          console.error(`[Backend] Failed to fetch ${source.name}:`, response.statusText);
+          continue;
+        }
+
+        const html = await response.text();
+        const $ = cheerio.load(html);
+
+        // Extract articles based on the source
+        let articles = [];
+
+        if (source.name === 'Caixin') {
+          // Caixin-specific selectors
+          $('article, .news-item, .article-item, a[href*="/"]').each((i, elem) => {
+            const $elem = $(elem);
+            const title = $elem.find('h1, h2, h3, h4, .title').text().trim() || $elem.text().trim();
+            const url = $elem.attr('href') || $elem.find('a').attr('href');
+            const description = $elem.find('p, .description, .summary').first().text().trim();
+
+            if (title && /[\u4e00-\u9fa5]/.test(title) && title.length > 5 && title.length < 200) {
+              const fullUrl = url && url.startsWith('http') ? url : (url ? `https://www.caixin.com${url}` : null);
+              if (fullUrl && !allArticles.some(a => a.title === title)) {
+                articles.push({
+                  source: source.name,
+                  title,
+                  url: fullUrl,
+                  description: description || null
+                });
+              }
+            }
+          });
+        } else if (source.name === 'BBC Chinese') {
+          // BBC Chinese-specific selectors
+          $('article, .bbc-uk8dsi, [data-testid="card-headline"]').each((i, elem) => {
+            const $elem = $(elem);
+            const title = $elem.find('h2, h3, [data-testid="card-headline"]').text().trim() || $elem.text().trim();
+            const url = $elem.find('a').attr('href') || $elem.attr('href');
+            const description = $elem.find('p').first().text().trim();
+
+            if (title && /[\u4e00-\u9fa5]/.test(title) && title.length > 5 && title.length < 200) {
+              const fullUrl = url && url.startsWith('http') ? url : (url ? `https://www.bbc.com${url}` : null);
+              if (fullUrl && !allArticles.some(a => a.title === title)) {
+                articles.push({
+                  source: source.name,
+                  title,
+                  url: fullUrl,
+                  description: description || null
+                });
+              }
+            }
+          });
+        }
+
+        console.log(`[Backend] Found ${articles.length} articles from ${source.name}`);
+        allArticles.push(...articles.slice(0, 10)); // Limit to 10 articles per source
+      } catch (sourceError) {
+        console.error(`[Backend] Error fetching from ${source.name}:`, sourceError.message);
+      }
+    }
+
+    console.log(`[Backend] Total articles found: ${allArticles.length}`);
+    res.json({ articles: allArticles });
+  } catch (error) {
+    console.error('[Backend] Error fetching news:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend server running on http://0.0.0.0:${PORT}`);
 });

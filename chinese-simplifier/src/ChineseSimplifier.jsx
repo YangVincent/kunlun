@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, Link } from 'react-router-dom';
 import './ChineseSimplifier.css';
 import { pinyin } from 'pinyin-pro';
 
@@ -37,10 +38,23 @@ const SAMPLE_TEXT = {
 };
 
 export default function ChineseSimplifier() {
+  const location = useLocation();
   const [inputText, setInputText] = useState('');
   const [urlInput, setUrlInput] = useState('');
   const [inputMode, setInputMode] = useState('url'); // 'text' or 'url'
   const [hskLevel, setHskLevel] = useState(3);
+
+  // Handle URL from route state (when coming from news search)
+  useEffect(() => {
+    if (location.state?.url) {
+      setUrlInput(location.state.url);
+      setInputMode('url');
+      // Automatically fetch the article
+      setTimeout(() => {
+        fetchTextFromUrl();
+      }, 100);
+    }
+  }, [location.state]);
   const [fetchedText, setFetchedText] = useState(''); // For URL-fetched article display
   const [simplifiedText, setSimplifiedText] = useState('');
   const [annotations, setAnnotations] = useState([]);
@@ -595,6 +609,9 @@ Respond with ONLY a JSON array, no other text.`
             <p className="subtitle">Transform complex Chinese into HSK-level vocabulary</p>
           </div>
 
+          <Link to="/news" className="news-link">
+            Browse News Articles →
+          </Link>
         </header>
 
         {/* Input Section */}
