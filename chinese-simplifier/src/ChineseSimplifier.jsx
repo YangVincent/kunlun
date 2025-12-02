@@ -45,9 +45,11 @@ export default function ChineseSimplifier() {
   const [annotations, setAnnotations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showTooltips, setShowTooltips] = useState(false);
+  const [showTooltips, setShowTooltips] = useState(true);
   const [copySuccess, setCopySuccess] = useState(false);
   const [activeCharIndex, setActiveCharIndex] = useState(null);
+  const [phrases, setPhrases] = useState([]);
+  const [phraseTranslations, setPhraseTranslations] = useState({});
 
   // Close tooltip when clicking outside
   useEffect(() => {
@@ -173,11 +175,8 @@ ANNOTATIONS:
         const text = simplifiedMatch[1].trim();
         setSimplifiedText(text);
 
-        // Trigger DOM mutation to help extensions re-scan
+        // Dispatch custom event that extensions might listen for
         setTimeout(() => {
-          setForceUpdate(prev => prev + 1);
-
-          // Dispatch custom event that extensions might listen for
           const event = new CustomEvent('contentUpdated', { detail: { text } });
           document.dispatchEvent(event);
         }, 100);
@@ -247,9 +246,159 @@ Respond with ONLY a JSON array, no other text.`
     }
   };
 
-  // Component to render a single character with tooltip
+  // Segment text into phrases and get translations
+  const segmentAndTranslate = async (text) => {
+    if (!text) return;
+
+    try {
+      // Step 1: Segment text into phrases
+      const segmentResponse = await fetch('http://137.184.55.135:3001/api/segment-text', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!segmentResponse.ok) {
+        throw new Error('Failed to segment text');
+      }
+
+      const { phrases: segmentedPhrases } = await segmentResponse.json();
+      setPhrases(segmentedPhrases);
+
+      // Step 2: Get English translations and pinyin from CC-CEDICT
+      const chinesePhrases = segmentedPhrases
+        .filter(p => /[\u4e00-\u9fa5]/.test(p.text))
+        .map(p => p.text);
+
+      if (chinesePhrases.length > 0) {
+        const definitionResponse = await fetch('http://137.184.55.135:3001/api/lookup-definitions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phrases: chinesePhrases }),
+        });
+
+        const { definitions } = await definitionResponse.json();
+
+        // Convert definitions to translations format
+        const translations = {};
+        for (const [phrase, data] of Object.entries(definitions)) {
+          translations[phrase] = data.definitions;
+        }
+
+        setPhraseTranslations(translations);
+      }
+    } catch (err) {
+      console.error('Error segmenting/translating text:', err);
+    }
+  };
+
+  // Reset phrases when simplified text changes
+  useEffect(() => {
+    setPhrases([]);
+    setPhraseTranslations({});
+  }, [simplifiedText]);
+
+  // Effect to segment and translate when tooltips are enabled
+  useEffect(() => {
+    if (showTooltips && simplifiedText && phrases.length === 0) {
+      segmentAndTranslate(simplifiedText);
+    }
+  }, [showTooltips, simplifiedText]);
+
+  // Component to render a phrase with tooltip
+  const ChinesePhrase = ({ phrase, index }) => {
+    const [hoverActive, setHoverActive] = useState(false);
+    const [tooltipStyle, setTooltipStyle] = useState({ opacity: 0 });
+    const spanRef = useRef(null);
+    const tooltipRef = useRef(null);
+
+    // If it's not Chinese, just return the text
+    if (!/[\u4e00-\u9fa5]/.test(phrase.text)) {
+      return <span>{phrase.text}</span>;
+    }
+
+    // Get pinyin for the phrase
+    const phrasePinyin = pinyin(phrase.text, { toneType: 'symbol' });
+    const translation = phraseTranslations[phrase.text] || 'Loading...';
+
+    const isActive = activeCharIndex === index || hoverActive;
+
+    // Smart positioning: stay near word but adjust to stay on screen
+    useEffect(() => {
+      if (isActive && spanRef.current && tooltipRef.current) {
+        const wordRect = spanRef.current.getBoundingClientRect();
+        const tooltipRect = tooltipRef.current.getBoundingClientRect();
+
+        const margin = 10; // Screen edge margin
+        const tooltipWidth = tooltipRect.width;
+        const wordCenterOffset = wordRect.width / 2; // Center of word relative to word start
+
+        // Try to center on word first
+        let leftOffset = -(tooltipWidth / 2) + wordCenterOffset;
+
+        // Check if tooltip would go off left edge
+        const tooltipLeft = wordRect.left + leftOffset;
+        if (tooltipLeft < margin) {
+          // Shift right just enough to stay on screen
+          leftOffset += (margin - tooltipLeft);
+        }
+
+        // Check if tooltip would go off right edge
+        const tooltipRight = wordRect.left + leftOffset + tooltipWidth;
+        if (tooltipRight > window.innerWidth - margin) {
+          // Shift left just enough to stay on screen
+          leftOffset -= (tooltipRight - (window.innerWidth - margin));
+        }
+
+        // Calculate arrow position: where the word center is relative to tooltip left edge
+        const arrowLeft = wordCenterOffset - leftOffset;
+
+        setTooltipStyle({
+          left: `${leftOffset}px`,
+          opacity: 1,
+          '--arrow-left': `${arrowLeft}px`
+        });
+      } else {
+        setTooltipStyle({ opacity: 0 });
+      }
+    }, [isActive, translation]);
+
+    return (
+      <span
+        ref={spanRef}
+        className="interactive-char"
+        onMouseEnter={() => setHoverActive(true)}
+        onMouseLeave={() => setHoverActive(false)}
+        onTouchStart={(e) => {
+          e.stopPropagation();
+          setActiveCharIndex(index);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setActiveCharIndex(activeCharIndex === index ? null : index);
+        }}
+      >
+        {phrase.text}
+        {isActive && showTooltips && (
+          <span ref={tooltipRef} className="char-tooltip" style={tooltipStyle}>
+            <div className="tooltip-pinyin">{phrasePinyin}</div>
+            <div className="tooltip-translation">{translation}</div>
+          </span>
+        )}
+      </span>
+    );
+  };
+
+  // Component to render a single character with tooltip (fallback for when phrase segmentation not available)
   const ChineseChar = ({ char, index }) => {
     const [hoverActive, setHoverActive] = useState(false);
+    const [tooltipStyle, setTooltipStyle] = useState({ opacity: 0 });
+    const spanRef = useRef(null);
+    const tooltipRef = useRef(null);
 
     if (!/[\u4e00-\u9fa5]/.test(char)) {
       return <span>{char}</span>;
@@ -260,8 +409,43 @@ Respond with ONLY a JSON array, no other text.`
 
     const isActive = activeCharIndex === index || hoverActive;
 
+    // Smart positioning: stay near word but adjust to stay on screen
+    useEffect(() => {
+      if (isActive && spanRef.current && tooltipRef.current) {
+        const wordRect = spanRef.current.getBoundingClientRect();
+        const tooltipRect = tooltipRef.current.getBoundingClientRect();
+
+        const margin = 10;
+        const tooltipWidth = tooltipRect.width;
+        const wordCenterOffset = wordRect.width / 2;
+
+        let leftOffset = -(tooltipWidth / 2) + wordCenterOffset;
+
+        const tooltipLeft = wordRect.left + leftOffset;
+        if (tooltipLeft < margin) {
+          leftOffset += (margin - tooltipLeft);
+        }
+
+        const tooltipRight = wordRect.left + leftOffset + tooltipWidth;
+        if (tooltipRight > window.innerWidth - margin) {
+          leftOffset -= (tooltipRight - (window.innerWidth - margin));
+        }
+
+        const arrowLeft = wordCenterOffset - leftOffset;
+
+        setTooltipStyle({
+          left: `${leftOffset}px`,
+          opacity: 1,
+          '--arrow-left': `${arrowLeft}px`
+        });
+      } else {
+        setTooltipStyle({ opacity: 0 });
+      }
+    }, [isActive]);
+
     return (
       <span
+        ref={spanRef}
         className="interactive-char"
         onMouseEnter={() => setHoverActive(true)}
         onMouseLeave={() => setHoverActive(false)}
@@ -276,7 +460,7 @@ Respond with ONLY a JSON array, no other text.`
       >
         {char}
         {isActive && showTooltips && (
-          <span className="char-tooltip">
+          <span ref={tooltipRef} className="char-tooltip" style={tooltipStyle}>
             <div className="tooltip-pinyin">{charPinyin}</div>
           </span>
         )}
@@ -432,9 +616,15 @@ Respond with ONLY a JSON array, no other text.`
             <div className="output-text">
               {showTooltips ? (
                 <div className="tooltip-mode">
-                  {simplifiedText.split('').map((char, idx) => (
-                    <ChineseChar key={idx} char={char} index={idx} />
-                  ))}
+                  {phrases.length > 0 ? (
+                    phrases.map((phrase, idx) => (
+                      <ChinesePhrase key={idx} phrase={phrase} index={idx} />
+                    ))
+                  ) : (
+                    simplifiedText.split('').map((char, idx) => (
+                      <ChineseChar key={idx} char={char} index={idx} />
+                    ))
+                  )}
                 </div>
               ) : (
                 <span>{simplifiedText}</span>

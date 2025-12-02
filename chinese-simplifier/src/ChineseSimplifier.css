@@ -619,25 +619,29 @@
 .char-tooltip {
   position: absolute;
   bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
   background: var(--color-ink);
   color: white;
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 0.85rem;
-  white-space: nowrap;
   z-index: 1000;
   margin-bottom: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  animation: tooltipFadeIn 0.2s ease;
+  transition: opacity 0.15s ease;
+
+  /* Text wrapping */
+  white-space: normal;
+  word-wrap: break-word;
+  max-width: min(350px, 85vw);
+  width: max-content;
 }
 
 .char-tooltip::after {
   content: '';
   position: absolute;
   top: 100%;
-  left: 50%;
+  left: var(--arrow-left, 50%);
   transform: translateX(-50%);
   border: 6px solid transparent;
   border-top-color: var(--color-ink);
@@ -660,6 +664,16 @@
   font-size: 1rem;
   margin-bottom: 4px;
   color: #ffd700;
+}
+
+.tooltip-translation {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  color: #e0e0e0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  padding-top: 6px;
+  margin-top: 4px;
+  font-style: italic;
 }
 
 .tooltip-meaning {
@@ -820,6 +834,20 @@
 
   .content-wrapper {
     padding: var(--space-md) var(--space-xs);
+  }
+
+  .char-tooltip {
+    max-width: 70vw;
+    font-size: 0.8rem;
+    padding: 8px 10px;
+  }
+
+  .tooltip-pinyin {
+    font-size: 0.9rem;
+  }
+
+  .tooltip-translation {
+    font-size: 0.75rem;
   }
 
   .main-title {

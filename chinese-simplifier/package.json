@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "cc-cedict": "^1.1.0",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -17,6 +18,7 @@
     "hanzi": "^2.1.5",
     "jsdom": "^27.2.0",
     "node-fetch": "^3.3.2",
+    "nodejieba": "^3.5.2",
     "pinyin-pro": "^3.27.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

@@ -3,12 +3,17 @@ import cors from 'cors';
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import 'dotenv/config';
+import nodejieba from 'nodejieba';
+import cedict from 'cc-cedict';
 
 const app = express();
 const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// CC-CEDICT is already loaded and ready to use
+console.log('CC-CEDICT dictionary ready');
 
 // Proxy endpoint for Anthropic API
 app.post('/api/claude', async (req, res) => {
@@ -120,6 +125,96 @@ app.post('/api/fetch-url', async (req, res) => {
     res.json({ text });
   } catch (error) {
     console.error('[Backend] Error fetching URL:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to segment Chinese text into phrases
+app.post('/api/segment-text', async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+
+    // Use nodejieba to segment the text
+    const segments = nodejieba.cut(text);
+
+    // Build phrase array with positions
+    const phrases = [];
+    let currentIndex = 0;
+
+    for (const segment of segments) {
+      const start = currentIndex;
+      const end = currentIndex + segment.length;
+
+      phrases.push({
+        text: segment,
+        start: start,
+        end: end
+      });
+
+      currentIndex = end;
+    }
+
+    res.json({ phrases });
+  } catch (error) {
+    console.error('Error segmenting text:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to look up definitions for Chinese phrases
+app.post('/api/lookup-definitions', async (req, res) => {
+  try {
+    const { phrases } = req.body;
+
+    if (!phrases || !Array.isArray(phrases)) {
+      return res.status(400).json({ error: 'Phrases array is required' });
+    }
+
+    // Look up each phrase in the dictionary
+    const definitions = {};
+
+    for (const phrase of phrases) {
+      // Try to find the phrase in the dictionary using getBySimplified
+      // Returns object keyed by pinyin, each containing an array of entries
+      const entries = cedict.getBySimplified(phrase);
+
+      if (entries && Object.keys(entries).length > 0) {
+        // Take the first pinyin variant
+        const firstPinyin = Object.keys(entries)[0];
+        const entryArray = entries[firstPinyin];
+
+        if (entryArray && entryArray.length > 0) {
+          const entry = entryArray[0];
+
+          // Take only the first definition for brevity
+          const firstDefinition = Array.isArray(entry.english) ? entry.english[0] : entry.english;
+
+          definitions[phrase] = {
+            pinyin: entry.pinyin || '',
+            definitions: firstDefinition || 'No definition found'
+          };
+        } else {
+          definitions[phrase] = {
+            pinyin: '',
+            definitions: 'No definition found'
+          };
+        }
+      } else {
+        // If not found, set a placeholder
+        definitions[phrase] = {
+          pinyin: '',
+          definitions: 'No definition found'
+        };
+      }
+    }
+
+    res.json({ definitions });
+  } catch (error) {
+    console.error('Error looking up definitions:', error);
     res.status(500).json({ error: error.message });
   }
 });
