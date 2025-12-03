@@ -8,6 +8,7 @@ export default defineConfig({
     allowedHosts: [
       'aeonneo.com',
       'www.aeonneo.com',
+      'cn.aeonneo.com',
       'localhost',
       '137.184.55.135'
     ]
