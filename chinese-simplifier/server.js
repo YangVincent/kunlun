@@ -237,6 +237,7 @@ app.post('/api/lookup-definitions', async (req, res) => {
 
     // Look up each phrase in the dictionary
     const definitions = {};
+    const phrasesNotFound = [];
 
     for (const phrase of phrases) {
       // Try to find the phrase in the dictionary using getBySimplified
@@ -259,17 +260,110 @@ app.post('/api/lookup-definitions', async (req, res) => {
             definitions: firstDefinition || 'No definition found'
           };
         } else {
+          phrasesNotFound.push(phrase);
+        }
+      } else {
+        // If not found in CC-CEDICT, add to list for Claude lookup
+        phrasesNotFound.push(phrase);
+      }
+    }
+
+    // Use Claude as fallback for phrases not found in CC-CEDICT
+    if (phrasesNotFound.length > 0) {
+      console.log(`[Backend] ${phrasesNotFound.length} phrases not found in CC-CEDICT, using Claude for definitions...`);
+
+      const apiKey = process.env.VITE_ANTHROPIC_API_KEY;
+
+      if (apiKey) {
+        try {
+          // Create numbered list for Claude
+          const numberedPhrases = phrasesNotFound.map((p, i) => `${i + 1}. ${p}`).join('\n');
+
+          const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+              model: 'claude-3-5-haiku-20241022',
+              max_tokens: 2000,
+              messages: [{
+                role: 'user',
+                content: `For each Chinese phrase below, provide a concise English definition (5-10 words max). Return ONLY the definitions, one per line, in the same numbered order:
+
+${numberedPhrases}
+
+Return format:
+1. definition for first phrase
+2. definition for second phrase
+etc.`
+              }]
+            })
+          });
+
+          if (claudeResponse.ok) {
+            const claudeData = await claudeResponse.json();
+            const responseText = claudeData.content[0].text;
+            const lines = responseText.trim().split('\n').filter(line => line.trim());
+
+            // Parse Claude's numbered definitions
+            phrasesNotFound.forEach((phrase, idx) => {
+              const definitionLine = lines.find(line => {
+                const match = line.match(/^(\d+)\.\s*(.+)/);
+                return match && parseInt(match[1]) === idx + 1;
+              });
+
+              if (definitionLine) {
+                const match = definitionLine.match(/^\d+\.\s*(.+)/);
+                if (match) {
+                  definitions[phrase] = {
+                    pinyin: '',
+                    definitions: match[1].trim()
+                  };
+                  console.log(`[Backend] Claude definition for "${phrase}": ${match[1].trim()}`);
+                } else {
+                  definitions[phrase] = {
+                    pinyin: '',
+                    definitions: 'No definition found'
+                  };
+                }
+              } else {
+                definitions[phrase] = {
+                  pinyin: '',
+                  definitions: 'No definition found'
+                };
+              }
+            });
+          } else {
+            console.error('[Backend] Claude API error:', claudeResponse.status);
+            // Set fallback for phrases not found
+            phrasesNotFound.forEach(phrase => {
+              definitions[phrase] = {
+                pinyin: '',
+                definitions: 'No definition found'
+              };
+            });
+          }
+        } catch (claudeError) {
+          console.error('[Backend] Error calling Claude for definitions:', claudeError);
+          // Set fallback for phrases not found
+          phrasesNotFound.forEach(phrase => {
+            definitions[phrase] = {
+              pinyin: '',
+              definitions: 'No definition found'
+            };
+          });
+        }
+      } else {
+        // No API key, set fallback
+        phrasesNotFound.forEach(phrase => {
           definitions[phrase] = {
             pinyin: '',
             definitions: 'No definition found'
           };
-        }
-      } else {
-        // If not found, set a placeholder
-        definitions[phrase] = {
-          pinyin: '',
-          definitions: 'No definition found'
-        };
+        });
       }
     }
 
@@ -358,6 +452,68 @@ app.post('/api/fetch-news', async (req, res) => {
     }
 
     console.log(`[Backend] Total articles found: ${allArticles.length}`);
+
+    // Add translations and pinyin to articles
+    const apiKey = process.env.VITE_ANTHROPIC_API_KEY;
+    if (apiKey && allArticles.length > 0) {
+      try {
+        console.log('[Backend] Adding translations and pinyin to articles...');
+
+        // Prepare titles for batch translation with numbered list for clarity
+        const numberedTitles = allArticles.map((a, i) => `${i + 1}. ${a.title}`).join('\n');
+
+        const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-haiku-20241022',
+            max_tokens: 2000,
+            messages: [{
+              role: 'user',
+              content: `Translate each of these Chinese news article titles to English. Return ONLY the English translations, one per line, in the same numbered format (e.g., "1. Translation here"). Do not add any explanations or extra text.
+
+Chinese Titles:
+${numberedTitles}`
+            }]
+          })
+        });
+
+        if (claudeResponse.ok) {
+          const claudeData = await claudeResponse.json();
+          const responseText = claudeData.content[0].text.trim();
+          console.log('[Backend] Translation response:', responseText.substring(0, 200));
+
+          // Parse numbered translations
+          const lines = responseText.split('\n').filter(line => line.trim());
+
+          // Add translations to articles
+          allArticles.forEach((article, idx) => {
+            // Try to find translation by number
+            const translationLine = lines.find(line => {
+              const match = line.match(/^(\d+)\.\s*(.+)/);
+              return match && parseInt(match[1]) === idx + 1;
+            });
+
+            if (translationLine) {
+              const match = translationLine.match(/^\d+\.\s*(.+)/);
+              if (match) {
+                article.translation = match[1].trim();
+              }
+            }
+          });
+
+          const translatedCount = allArticles.filter(a => a.translation).length;
+          console.log(`[Backend] Translations added: ${translatedCount}/${allArticles.length}`);
+        }
+      } catch (translationError) {
+        console.error('[Backend] Error adding translations:', translationError.message);
+      }
+    }
+
     res.json({ articles: allArticles });
   } catch (error) {
     console.error('[Backend] Error fetching news:', error);

@@ -180,9 +180,15 @@
   font-style: italic;
 }
 
-.news-link {
-  display: inline-block;
+.nav-links {
+  display: flex;
+  gap: var(--space-sm);
   margin-top: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  display: inline-block;
   padding: 0.75rem 1.5rem;
   background: var(--color-vermillion);
   color: white;
@@ -194,9 +200,20 @@
   transition: all var(--transition-base);
 }
 
-.news-link:hover {
+.nav-link:hover {
   background: var(--color-vermillion-dark);
   transform: translateX(4px);
+}
+
+@media (max-width: 768px) {
+  .nav-links {
+    flex-direction: column;
+  }
+
+  .nav-link {
+    width: 100%;
+    text-align: center;
+  }
 }
 
 /* Card styles */
