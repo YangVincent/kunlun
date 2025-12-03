@@ -128,13 +128,33 @@
   color: var(--color-ink-lighter);
 }
 
+.article-title-section {
+  margin-bottom: var(--space-sm);
+}
+
+.article-pinyin {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-vermillion);
+  margin-bottom: 0.25rem;
+  letter-spacing: 0.02em;
+}
+
 .article-title {
   font-family: var(--font-chinese);
   font-size: 1.2rem;
   font-weight: 600;
   color: var(--color-ink);
-  margin-bottom: var(--space-sm);
+  margin-bottom: 0.5rem;
   line-height: 1.5;
+}
+
+.article-translation {
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  color: var(--color-ink-lighter);
+  font-style: italic;
+  line-height: 1.4;
 }
 
 .article-description {

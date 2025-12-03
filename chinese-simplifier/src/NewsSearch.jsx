@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { pinyin } from 'pinyin-pro';
 import './NewsSearch.css';
 
 const DEFAULT_SOURCES = [
@@ -100,25 +101,35 @@ export default function NewsSearch() {
         {/* Articles Grid */}
         {!isLoading && articles.length > 0 && (
           <div className="articles-grid">
-            {articles.map((article, idx) => (
-              <div
-                key={idx}
-                className="article-card"
-                onClick={() => handleArticleClick(article.url)}
-              >
-                <div className="article-header">
-                  <span className="article-source">{article.source}</span>
-                  {article.date && <span className="article-date">{article.date}</span>}
+            {articles.map((article, idx) => {
+              const titlePinyin = pinyin(article.title, { toneType: 'symbol' });
+
+              return (
+                <div
+                  key={idx}
+                  className="article-card"
+                  onClick={() => handleArticleClick(article.url)}
+                >
+                  <div className="article-header">
+                    <span className="article-source">{article.source}</span>
+                    {article.date && <span className="article-date">{article.date}</span>}
+                  </div>
+                  <div className="article-title-section">
+                    <div className="article-pinyin">{titlePinyin}</div>
+                    <h3 className="article-title">{article.title}</h3>
+                    {article.translation && (
+                      <div className="article-translation">{article.translation}</div>
+                    )}
+                  </div>
+                  {article.description && (
+                    <p className="article-description">{article.description}</p>
+                  )}
+                  <div className="article-footer">
+                    <span className="read-more">Read & Simplify →</span>
+                  </div>
                 </div>
-                <h3 className="article-title">{article.title}</h3>
-                {article.description && (
-                  <p className="article-description">{article.description}</p>
-                )}
-                <div className="article-footer">
-                  <span className="read-more">Read & Simplify →</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
