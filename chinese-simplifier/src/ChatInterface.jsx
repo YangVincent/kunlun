@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import './ChatInterface.css';
 import { ChineseTextDisplay, DisplayModeSelector } from './ChineseTextDisplay';
+import { supabase, getSessionId } from './supabaseClient';
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState([]);
@@ -10,12 +11,87 @@ export default function ChatInterface() {
   const [displayMode, setDisplayMode] = useState('tooltips'); // 'none', 'pinyin', 'tooltips'
   const [phrases, setPhrases] = useState({});
   const [phraseTranslations, setPhraseTranslations] = useState({});
+  const [sessionId] = useState(getSessionId());
   const messagesEndRef = useRef(null);
+
+  // Load chat history on mount
+  useEffect(() => {
+    loadChatHistory();
+  }, []);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const loadChatHistory = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('chat_messages')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const loadedMessages = data.map(msg => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content
+        }));
+        setMessages(loadedMessages);
+
+        // Segment and translate any Chinese messages
+        for (const msg of loadedMessages) {
+          if (msg.role === 'assistant' && /[\u4e00-\u9fa5]/.test(msg.content)) {
+            segmentAndTranslate(msg.content, msg.id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error loading chat history:', err);
+    }
+  };
+
+  const saveMessage = async (message) => {
+    try {
+      const { error } = await supabase
+        .from('chat_messages')
+        .insert({
+          session_id: sessionId,
+          role: message.role,
+          content: message.content
+        });
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error saving message:', err);
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('chat_messages')
+        .delete()
+        .eq('session_id', sessionId);
+
+      if (error) throw error;
+
+      // Clear local state
+      setMessages([]);
+      setPhrases({});
+      setPhraseTranslations({});
+    } catch (err) {
+      console.error('Error clearing history:', err);
+      alert('Failed to clear history. Please try again.');
+    }
+  };
 
   // Segment and translate Chinese text
   const segmentAndTranslate = async (text, messageId) => {
@@ -72,6 +148,24 @@ export default function ChatInterface() {
   const sendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
+    // Check if user is asking to clear history
+    const clearPatterns = [
+      /clear.*history/i,
+      /delete.*history/i,
+      /clear.*chat/i,
+      /delete.*chat/i,
+      /clear.*conversation/i,
+      /reset.*chat/i,
+      /start.*over/i,
+      /new.*conversation/i
+    ];
+
+    if (clearPatterns.some(pattern => pattern.test(inputMessage))) {
+      await clearHistory();
+      setInputMessage('');
+      return;
+    }
+
     const userMessage = {
       id: Date.now(),
       role: 'user',
@@ -81,6 +175,9 @@ export default function ChatInterface() {
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
+
+    // Save user message to Supabase
+    await saveMessage(userMessage);
 
     try {
       const response = await fetch('http://137.184.55.135:3001/api/claude', {
@@ -110,6 +207,9 @@ export default function ChatInterface() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Save assistant message to Supabase
+      await saveMessage(assistantMessage);
 
       // Segment and translate if there's Chinese content
       if (/[\u4e00-\u9fa5]/.test(assistantMessage.content)) {
