@@ -34,6 +34,9 @@ export function ChineseTextDisplay({
   // Helper function to render text with pinyin above characters
   const renderTextWithPinyin = (text) => {
     return text.split('').map((char, idx) => {
+      if (char === '\n') {
+        return <br key={idx} />;
+      }
       if (/[\u4e00-\u9fa5]/.test(char)) {
         const charPinyin = pinyin(char, { toneType: 'symbol', type: 'array' })[0];
         return (
@@ -54,7 +57,11 @@ export function ChineseTextDisplay({
     const spanRef = useRef(null);
     const tooltipRef = useRef(null);
 
+    // Handle newlines in non-Chinese text
     if (!/[\u4e00-\u9fa5]/.test(phrase.text)) {
+      if (phrase.text === '\n') {
+        return <br />;
+      }
       return <span>{phrase.text}</span>;
     }
 
@@ -128,6 +135,10 @@ export function ChineseTextDisplay({
     const [tooltipStyle, setTooltipStyle] = useState({ opacity: 0 });
     const spanRef = useRef(null);
     const tooltipRef = useRef(null);
+
+    if (char === '\n') {
+      return <br />;
+    }
 
     if (!/[\u4e00-\u9fa5]/.test(char)) {
       return <span>{char}</span>;
@@ -219,7 +230,12 @@ export function ChineseTextDisplay({
       </div>
     );
   } else {
-    return <span>{text}</span>;
+    // Plain mode - preserve line breaks
+    return (
+      <div style={{ whiteSpace: 'pre-wrap' }}>
+        {text}
+      </div>
+    );
   }
 }
 
