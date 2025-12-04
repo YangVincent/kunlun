@@ -98,7 +98,7 @@ export default function ChatInterface() {
     if (!text) return;
 
     try {
-      const segmentResponse = await fetch('http://137.184.55.135:3001/api/segment-text', {
+      const segmentResponse = await fetch('/api/segment-text', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ export default function ChatInterface() {
         .map(p => p.text);
 
       if (chinesePhrases.length > 0) {
-        const definitionResponse = await fetch('http://137.184.55.135:3001/api/lookup-definitions', {
+        const definitionResponse = await fetch('/api/lookup-definitions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -180,7 +180,7 @@ export default function ChatInterface() {
     await saveMessage(userMessage);
 
     try {
-      const response = await fetch('http://137.184.55.135:3001/api/claude', {
+      const response = await fetch('/api/claude', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -24,7 +24,7 @@ export default function NewsSearch() {
     setArticles([]);
 
     try {
-      const response = await fetch('http://137.184.55.135:3001/api/fetch-news', {
+      const response = await fetch('/api/fetch-news', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

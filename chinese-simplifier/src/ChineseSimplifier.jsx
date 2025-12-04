@@ -91,7 +91,7 @@ export default function ChineseSimplifier() {
 
     try {
       console.log('[Frontend] Sending request to backend...');
-      const response = await fetch('http://137.184.55.135:3001/api/fetch-url', {
+      const response = await fetch('/api/fetch-url', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -157,7 +157,7 @@ ANNOTATIONS:
 [JSON array of changes]`;
 
     try {
-      const response = await fetch('http://137.184.55.135:3001/api/claude', {
+      const response = await fetch('/api/claude', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -213,7 +213,7 @@ ANNOTATIONS:
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://137.184.55.135:3001/api/claude', {
+      const response = await fetch('/api/claude', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

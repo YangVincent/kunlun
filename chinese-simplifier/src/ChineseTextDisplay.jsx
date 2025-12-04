@@ -255,7 +255,7 @@ export function DisplayModeSelector({ displayMode, onDisplayModeChange }) {
 /**
  * Hook for managing phrase segmentation and translation
  */
-export function usePhraseSegmentation(apiUrl = 'http://137.184.55.135:3001') {
+export function usePhraseSegmentation(apiUrl = '') {
   const [phrases, setPhrases] = useState([]);
   const [phraseTranslations, setPhraseTranslations] = useState({});
 
