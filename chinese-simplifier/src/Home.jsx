@@ -74,6 +74,20 @@ export default function Home() {
             </div>
           </Link>
 
+          {/* Audio Player */}
+          <Link to="/listen" className="feature-card">
+            <div className="feature-icon">听</div>
+            <h2 className="feature-title">Audio Player</h2>
+            <p className="feature-description">
+              Upload and play Chinese audio files. Perfect for listening practice with podcasts, audiobooks, and language lessons.
+            </p>
+            <div className="feature-tags">
+              <span className="tag">Audio Upload</span>
+              <span className="tag">Playback</span>
+              <span className="tag">Listening Practice</span>
+            </div>
+          </Link>
+
         </div>
 
         <section className="about-section">

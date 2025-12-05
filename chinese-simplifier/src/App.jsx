@@ -4,6 +4,7 @@ import ChineseSimplifier from './ChineseSimplifier'
 import NewsSearch from './NewsSearch'
 import ChatInterface from './ChatInterface'
 import Reader from './Reader'
+import Listen from './Listen'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/news" element={<NewsSearch />} />
         <Route path="/chat" element={<ChatInterface />} />
         <Route path="/reader" element={<Reader />} />
+        <Route path="/listen" element={<Listen />} />
       </Routes>
     </BrowserRouter>
   )
