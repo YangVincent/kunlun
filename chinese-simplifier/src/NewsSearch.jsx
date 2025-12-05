@@ -47,7 +47,7 @@ export default function NewsSearch() {
 
   const handleArticleClick = (articleUrl) => {
     // Navigate to the main simplifier with the URL pre-filled
-    navigate('/', { state: { url: articleUrl } });
+    navigate('/simplifier', { state: { url: articleUrl } });
   };
 
   return (
@@ -68,7 +68,7 @@ export default function NewsSearch() {
           </div>
 
           <button onClick={() => navigate('/')} className="back-btn">
-            ← Back to Simplifier
+            ← Back to Home
           </button>
         </header>
 

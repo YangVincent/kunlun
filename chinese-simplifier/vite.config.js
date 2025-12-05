@@ -9,6 +9,8 @@ export default defineConfig({
       'aeonneo.com',
       'www.aeonneo.com',
       'cn.aeonneo.com',
+      'comprehensiblemandarin.com',
+      'www.comprehensiblemandarin.com',
       'localhost',
       '137.184.55.135'
     ]

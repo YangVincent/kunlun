@@ -317,6 +317,9 @@ Respond with ONLY a JSON array, no other text.`
           </div>
 
           <div className="nav-links">
+            <Link to="/" className="nav-link">
+              ← Back to Home
+            </Link>
             <Link to="/news" className="nav-link">
               Browse News Articles →
             </Link>

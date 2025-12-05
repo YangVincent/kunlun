@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Home from './Home'
 import ChineseSimplifier from './ChineseSimplifier'
 import NewsSearch from './NewsSearch'
 import ChatInterface from './ChatInterface'
@@ -8,7 +9,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<ChineseSimplifier />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/simplifier" element={<ChineseSimplifier />} />
         <Route path="/news" element={<NewsSearch />} />
         <Route path="/chat" element={<ChatInterface />} />
         <Route path="/reader" element={<Reader />} />
