@@ -5,12 +5,28 @@ import * as cheerio from 'cheerio';
 import 'dotenv/config';
 import nodejieba from 'nodejieba';
 import cedict from 'cc-cedict';
+import multer from 'multer';
+import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
+import FormData from 'form-data';
 
 const app = express();
 const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// Initialize Supabase client for backend
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
+);
+
+// Configure multer for file uploads (memory storage)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
 
 // CC-CEDICT is already loaded and ready to use
 console.log('CC-CEDICT dictionary ready');
@@ -517,6 +533,109 @@ ${numberedTitles}`
     res.json({ articles: allArticles });
   } catch (error) {
     console.error('[Backend] Error fetching news:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Transcription endpoint
+app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file provided' });
+    }
+
+    const audioBuffer = req.file.buffer;
+    const fileName = req.file.originalname;
+    const fileSize = req.file.size;
+
+    // Calculate SHA-256 hash of the file for deduplication
+    const fileHash = crypto.createHash('sha256').update(audioBuffer).digest('hex');
+    console.log(`[Transcribe] Processing file: ${fileName}, hash: ${fileHash.substring(0, 8)}...`);
+
+    // Check if we already have a transcript for this file
+    const { data: existingTranscript, error: fetchError } = await supabase
+      .from('audio_transcripts')
+      .select('*')
+      .eq('file_hash', fileHash)
+      .single();
+
+    if (existingTranscript && !fetchError) {
+      console.log(`[Transcribe] Cache HIT! Returning cached transcript`);
+      return res.json({
+        cached: true,
+        transcript: existingTranscript.transcript,
+        language_code: existingTranscript.language_code,
+        language_probability: existingTranscript.language_probability
+      });
+    }
+
+    console.log(`[Transcribe] Cache MISS. Calling ElevenLabs API...`);
+
+    // No cached transcript, call ElevenLabs API
+    const elevenlabsApiKey = process.env.ELEVENLABS_API_KEY;
+    if (!elevenlabsApiKey) {
+      return res.status(500).json({ error: 'ElevenLabs API key not configured' });
+    }
+
+    // Prepare form data for ElevenLabs
+    const formData = new FormData();
+    formData.append('file', audioBuffer, {
+      filename: fileName,
+      contentType: req.file.mimetype
+    });
+    formData.append('model_id', 'scribe_v1');
+    formData.append('timestamps_granularity', 'word');
+
+    // Call ElevenLabs Speech-to-Text API
+    const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+      method: 'POST',
+      headers: {
+        'xi-api-key': elevenlabsApiKey,
+        ...formData.getHeaders()
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Transcribe] ElevenLabs API error:', errorText);
+      return res.status(response.status).json({
+        error: 'Transcription failed',
+        details: errorText
+      });
+    }
+
+    const transcriptData = await response.json();
+    console.log(`[Transcribe] Successfully transcribed. Language: ${transcriptData.language_code}`);
+
+    // Save to Supabase for future use
+    const { error: insertError } = await supabase
+      .from('audio_transcripts')
+      .insert({
+        file_hash: fileHash,
+        file_name: fileName,
+        file_size: fileSize,
+        transcript: transcriptData,
+        language_code: transcriptData.language_code,
+        language_probability: transcriptData.language_probability
+      });
+
+    if (insertError) {
+      console.error('[Transcribe] Error saving to database:', insertError);
+      // Don't fail the request, just log the error
+    } else {
+      console.log(`[Transcribe] Transcript saved to database`);
+    }
+
+    res.json({
+      cached: false,
+      transcript: transcriptData,
+      language_code: transcriptData.language_code,
+      language_probability: transcriptData.language_probability
+    });
+
+  } catch (error) {
+    console.error('[Transcribe] Error:', error);
     res.status(500).json({ error: error.message });
   }
 });

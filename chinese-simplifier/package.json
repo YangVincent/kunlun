@@ -10,14 +10,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.86.0",
+    "@supabase/supabase-js": "^2.86.2",
     "cc-cedict": "^1.1.0",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.0",
+    "form-data": "^4.0.5",
     "hanzi": "^2.1.5",
     "jsdom": "^27.2.0",
+    "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
     "nodejieba": "^3.5.2",
     "pinyin-pro": "^3.27.0",

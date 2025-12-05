@@ -1,14 +1,23 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import './Listen.css';
+import { ChineseTextDisplay, DisplayModeSelector, usePhraseSegmentation } from './ChineseTextDisplay';
 
 export default function Listen() {
   const [audioFile, setAudioFile] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [transcript, setTranscript] = useState(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptError, setTranscriptError] = useState(null);
+  const [isCached, setIsCached] = useState(false);
+  const [displayMode, setDisplayMode] = useState('none');
   const audioRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Phrase segmentation for transcript display
+  const { phrases, phraseTranslations, segmentAndTranslate, reset } = usePhraseSegmentation();
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -55,6 +64,9 @@ export default function Listen() {
     setAudioUrl(null);
     setIsPlaying(false);
     setPlaybackSpeed(1.0);
+    setTranscript(null);
+    setTranscriptError(null);
+    setIsCached(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -64,6 +76,55 @@ export default function Listen() {
     setPlaybackSpeed(speed);
     if (audioRef.current) {
       audioRef.current.playbackRate = speed;
+    }
+  };
+
+  const handleGenerateTranscript = async () => {
+    if (!audioFile) return;
+
+    setIsTranscribing(true);
+    setTranscriptError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioFile);
+
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Transcription failed');
+      }
+
+      const data = await response.json();
+      setTranscript(data.transcript);
+      setIsCached(data.cached);
+      console.log(`Transcript ${data.cached ? 'loaded from cache' : 'generated'}:`, data);
+    } catch (error) {
+      console.error('Transcription error:', error);
+      setTranscriptError(error.message);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // Process transcript text when available
+  useEffect(() => {
+    if (transcript?.text) {
+      segmentAndTranslate(transcript.text);
+    } else {
+      reset();
+    }
+  }, [transcript]);
+
+  const handleWordClick = (startTime) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = startTime;
+      audioRef.current.play();
+      setIsPlaying(true);
     }
   };
 
@@ -187,6 +248,67 @@ export default function Listen() {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Transcript Button */}
+            <div className="transcript-actions">
+              <button
+                onClick={handleGenerateTranscript}
+                disabled={isTranscribing}
+                className="transcript-button"
+              >
+                {isTranscribing ? 'Transcribing...' : 'Generate Chinese Transcript'}
+              </button>
+              {isCached && transcript && (
+                <span className="cache-badge">✓ Loaded from cache (instant!)</span>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Transcript Section */}
+        {transcript && (
+          <section className="transcript-section">
+            <h2>Transcript</h2>
+            {transcriptError ? (
+              <div className="transcript-error">
+                <p>Error: {transcriptError}</p>
+              </div>
+            ) : (
+              <div className="transcript-content">
+                <div className="transcript-meta">
+                  <span>Language: Chinese ({transcript.language_code})</span>
+                  {transcript.language_probability && (
+                    <span>Confidence: {(transcript.language_probability * 100).toFixed(1)}%</span>
+                  )}
+                </div>
+
+                {/* Display Mode Selector */}
+                <DisplayModeSelector
+                  displayMode={displayMode}
+                  onDisplayModeChange={setDisplayMode}
+                />
+
+                {/* Chinese Text Display */}
+                <ChineseTextDisplay
+                  text={transcript.text}
+                  displayMode={displayMode}
+                  phrases={phrases}
+                  phraseTranslations={phraseTranslations}
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        {transcriptError && !transcript && (
+          <section className="transcript-section">
+            <h2>Transcript Error</h2>
+            <div className="transcript-error">
+              <p>{transcriptError}</p>
+              <button onClick={handleGenerateTranscript} className="retry-button">
+                Try Again
+              </button>
             </div>
           </section>
         )}
