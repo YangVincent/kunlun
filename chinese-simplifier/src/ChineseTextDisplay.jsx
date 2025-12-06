@@ -274,15 +274,23 @@ export function DisplayModeSelector({ displayMode, onDisplayModeChange }) {
 export function usePhraseSegmentation(apiUrl = '') {
   const [phrases, setPhrases] = useState([]);
   const [phraseTranslations, setPhraseTranslations] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
 
-  const segmentAndTranslate = async (text) => {
+  const segmentAndTranslate = async (text, audioHash = null) => {
     if (!text) {
       setPhrases([]);
       setPhraseTranslations({});
+      setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
+    const totalStart = performance.now();
+
     try {
+      const segmentStart = performance.now();
+      console.log('[Frontend] Starting text segmentation...');
+
       const segmentResponse = await fetch(`${apiUrl}/api/segment-text`, {
         method: 'POST',
         headers: {
@@ -296,6 +304,9 @@ export function usePhraseSegmentation(apiUrl = '') {
       }
 
       const { phrases: segmentedPhrases } = await segmentResponse.json();
+      const segmentTime = performance.now() - segmentStart;
+      console.log(`[Frontend] Text segmented in ${segmentTime.toFixed(0)}ms (${segmentedPhrases.length} phrases)`);
+
       setPhrases(segmentedPhrases);
 
       const chinesePhrases = segmentedPhrases
@@ -303,15 +314,28 @@ export function usePhraseSegmentation(apiUrl = '') {
         .map(p => p.text);
 
       if (chinesePhrases.length > 0) {
+        const requestBody = { phrases: chinesePhrases };
+        if (audioHash) {
+          requestBody.audio_hash = audioHash;
+          console.log(`[Frontend] Requesting definitions with audio_hash: ${audioHash.substring(0, 8)}...`);
+        } else {
+          console.log('[Frontend] Requesting definitions without audio_hash (no caching)');
+        }
+
+        const definitionStart = performance.now();
+
         const definitionResponse = await fetch(`${apiUrl}/api/lookup-definitions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ phrases: chinesePhrases }),
+          body: JSON.stringify(requestBody),
         });
 
         const { definitions } = await definitionResponse.json();
+        const definitionTime = performance.now() - definitionStart;
+
+        console.log(`[Frontend] Definitions loaded in ${definitionTime.toFixed(0)}ms (${Object.keys(definitions).length} phrases)`);
 
         const translations = {};
         for (const [phrase, data] of Object.entries(definitions)) {
@@ -320,15 +344,21 @@ export function usePhraseSegmentation(apiUrl = '') {
 
         setPhraseTranslations(translations);
       }
+
+      const totalTime = performance.now() - totalStart;
+      console.log(`[Frontend] Total translation process: ${totalTime.toFixed(0)}ms`);
     } catch (err) {
-      console.error('Error segmenting/translating text:', err);
+      console.error('[Frontend] Error segmenting/translating text:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const reset = () => {
     setPhrases([]);
     setPhraseTranslations({});
+    setIsLoading(false);
   };
 
-  return { phrases, phraseTranslations, segmentAndTranslate, reset };
+  return { phrases, phraseTranslations, isLoading, segmentAndTranslate, reset };
 }

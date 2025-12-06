@@ -12,12 +12,12 @@ export default function Listen() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptError, setTranscriptError] = useState(null);
   const [isCached, setIsCached] = useState(false);
-  const [displayMode, setDisplayMode] = useState('none');
+  const [displayMode, setDisplayMode] = useState('tooltips');
   const audioRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Phrase segmentation for transcript display
-  const { phrases, phraseTranslations, segmentAndTranslate, reset } = usePhraseSegmentation();
+  const { phrases, phraseTranslations, isLoading: isLoadingTranslations, segmentAndTranslate, reset } = usePhraseSegmentation();
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -86,8 +86,61 @@ export default function Listen() {
     setTranscriptError(null);
 
     try {
+      const totalStart = performance.now();
+
+      // Step 1: Calculate hash on client side
+      const hashStart = performance.now();
+      console.log('[Frontend] Calculating file hash...');
+
+      const arrayBuffer = await audioFile.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const hashTime = performance.now() - hashStart;
+      console.log(`[Frontend] Hash calculated in ${hashTime.toFixed(0)}ms: ${fileHash.substring(0, 8)}...`);
+
+      // Step 2: Check if cached
+      const cacheCheckStart = performance.now();
+      console.log('[Frontend] Checking cache...');
+
+      const cacheResponse = await fetch('/api/check-transcript-cache', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ file_hash: fileHash })
+      });
+
+      const cacheCheckTime = performance.now() - cacheCheckStart;
+
+      if (cacheResponse.ok) {
+        const cacheData = await cacheResponse.json();
+
+        if (cacheData.cached) {
+          // Cache hit - no need to upload file!
+          const totalTime = performance.now() - totalStart;
+          console.log(`[Frontend] Cache HIT! Transcript loaded in ${totalTime.toFixed(0)}ms (hash: ${hashTime.toFixed(0)}ms, cache check: ${cacheCheckTime.toFixed(0)}ms)`);
+
+          setTranscript({
+            ...cacheData.transcript,
+            audio_hash: fileHash,
+            language_code: cacheData.language_code,
+            language_probability: cacheData.language_probability
+          });
+          setIsCached(true);
+          return;
+        }
+      }
+
+      console.log(`[Frontend] Cache MISS. Uploading file for transcription... (cache check: ${cacheCheckTime.toFixed(0)}ms)`);
+
+      // Step 3: Cache miss - upload file for transcription
       const formData = new FormData();
       formData.append('audio', audioFile);
+      formData.append('file_hash', fileHash);
+
+      const uploadStart = performance.now();
 
       const response = await fetch('/api/transcribe', {
         method: 'POST',
@@ -100,11 +153,21 @@ export default function Listen() {
       }
 
       const data = await response.json();
-      setTranscript(data.transcript);
-      setIsCached(data.cached);
-      console.log(`Transcript ${data.cached ? 'loaded from cache' : 'generated'}:`, data);
+      const uploadTime = performance.now() - uploadStart;
+      const totalTime = performance.now() - totalStart;
+
+      console.log(`[Frontend] Transcription completed in ${totalTime.toFixed(0)}ms (hash: ${hashTime.toFixed(0)}ms, upload+transcribe: ${uploadTime.toFixed(0)}ms)`);
+
+      // Store the full response data which includes audio_hash, language_code, etc.
+      setTranscript({
+        ...data.transcript,
+        audio_hash: fileHash,
+        language_code: data.language_code,
+        language_probability: data.language_probability
+      });
+      setIsCached(false);
     } catch (error) {
-      console.error('Transcription error:', error);
+      console.error('[Frontend] Transcription error:', error);
       setTranscriptError(error.message);
     } finally {
       setIsTranscribing(false);
@@ -114,7 +177,9 @@ export default function Listen() {
   // Process transcript text when available
   useEffect(() => {
     if (transcript?.text) {
-      segmentAndTranslate(transcript.text);
+      console.log('[Listen] Transcript object:', transcript);
+      console.log('[Listen] Audio hash:', transcript.audio_hash);
+      segmentAndTranslate(transcript.text, transcript.audio_hash);
     } else {
       reset();
     }
@@ -259,9 +324,6 @@ export default function Listen() {
               >
                 {isTranscribing ? 'Transcribing...' : 'Generate Chinese Transcript'}
               </button>
-              {isCached && transcript && (
-                <span className="cache-badge">✓ Loaded from cache (instant!)</span>
-              )}
             </div>
           </section>
         )}
@@ -288,6 +350,13 @@ export default function Listen() {
                   displayMode={displayMode}
                   onDisplayModeChange={setDisplayMode}
                 />
+
+                {/* Loading indicator for translations */}
+                {isLoadingTranslations && (
+                  <div className="translation-loading">
+                    Loading translations...
+                  </div>
+                )}
 
                 {/* Chinese Text Display */}
                 <ChineseTextDisplay

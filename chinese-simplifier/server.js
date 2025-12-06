@@ -6,7 +6,6 @@ import 'dotenv/config';
 import nodejieba from 'nodejieba';
 import cedict from 'cc-cedict';
 import multer from 'multer';
-import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import FormData from 'form-data';
 
@@ -245,7 +244,9 @@ app.post('/api/segment-text', async (req, res) => {
 // Endpoint to look up definitions for Chinese phrases
 app.post('/api/lookup-definitions', async (req, res) => {
   try {
-    const { phrases } = req.body;
+    const { phrases, audio_hash } = req.body;
+
+    console.log(`[Backend] Received audio_hash: ${audio_hash ? audio_hash.substring(0, 8) + '...' : 'NONE'}`);
 
     if (!phrases || !Array.isArray(phrases)) {
       return res.status(400).json({ error: 'Phrases array is required' });
@@ -286,28 +287,66 @@ app.post('/api/lookup-definitions', async (req, res) => {
 
     // Use Claude as fallback for phrases not found in CC-CEDICT
     if (phrasesNotFound.length > 0) {
-      console.log(`[Backend] ${phrasesNotFound.length} phrases not found in CC-CEDICT, using Claude for definitions...`);
+      console.log(`[Backend] ${phrasesNotFound.length} phrases not found in CC-CEDICT`);
 
-      const apiKey = process.env.VITE_ANTHROPIC_API_KEY;
+      // If audio_hash is provided, check if we have cached translations for this entire transcript
+      let cachedAllTranslations = false;
+      if (audio_hash) {
+        console.log(`[Backend] Checking translation cache for audio hash: ${audio_hash.substring(0, 8)}...`);
 
-      if (apiKey) {
-        try {
-          // Create numbered list for Claude
-          const numberedPhrases = phrasesNotFound.map((p, i) => `${i + 1}. ${p}`).join('\n');
+        const translationCacheStart = Date.now();
+        const { data: cachedTranscript, error: cacheError } = await supabase
+          .from('transcript_translations')
+          .select('translations')
+          .eq('audio_hash', audio_hash)
+          .single();
+        const translationCacheTime = Date.now() - translationCacheStart;
 
-          const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-              model: 'claude-3-5-haiku-20241022',
-              max_tokens: 2000,
-              messages: [{
-                role: 'user',
-                content: `For each Chinese phrase below, provide a concise English definition (5-10 words max). Return ONLY the definitions, one per line, in the same numbered order:
+        if (cachedTranscript && !cacheError) {
+          console.log(`[Backend] Translation cache HIT! Loading ${Object.keys(cachedTranscript.translations).length} translations from cache (lookup: ${translationCacheTime}ms)`);
+
+          // Apply cached translations to phrases not found in CC-CEDICT
+          phrasesNotFound.forEach(phrase => {
+            if (cachedTranscript.translations[phrase]) {
+              definitions[phrase] = {
+                pinyin: '',
+                definitions: cachedTranscript.translations[phrase]
+              };
+            }
+          });
+
+          cachedAllTranslations = true;
+        } else {
+          console.log(`[Backend] Translation cache MISS. Will call Claude API... (lookup: ${translationCacheTime}ms)`);
+        }
+      }
+
+      const stillNotFound = cachedAllTranslations ? [] : phrasesNotFound;
+
+      // Use Claude for phrases not in cache
+      if (stillNotFound.length > 0) {
+        console.log(`[Backend] ${stillNotFound.length} phrases need Claude translation...`);
+
+        const apiKey = process.env.VITE_ANTHROPIC_API_KEY;
+
+        if (apiKey) {
+          try {
+            // Create numbered list for Claude
+            const numberedPhrases = stillNotFound.map((p, i) => `${i + 1}. ${p}`).join('\n');
+
+            const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01'
+              },
+              body: JSON.stringify({
+                model: 'claude-3-5-haiku-20241022',
+                max_tokens: 2000,
+                messages: [{
+                  role: 'user',
+                  content: `For each Chinese phrase below, provide a concise English definition (5-10 words max). Return ONLY the definitions, one per line, in the same numbered order:
 
 ${numberedPhrases}
 
@@ -315,71 +354,97 @@ Return format:
 1. definition for first phrase
 2. definition for second phrase
 etc.`
-              }]
-            })
-          });
+                }]
+              })
+            });
 
-          if (claudeResponse.ok) {
-            const claudeData = await claudeResponse.json();
-            const responseText = claudeData.content[0].text;
-            const lines = responseText.trim().split('\n').filter(line => line.trim());
+            if (claudeResponse.ok) {
+              const claudeData = await claudeResponse.json();
+              const responseText = claudeData.content[0].text;
+              const lines = responseText.trim().split('\n').filter(line => line.trim());
 
-            // Parse Claude's numbered definitions
-            phrasesNotFound.forEach((phrase, idx) => {
-              const definitionLine = lines.find(line => {
-                const match = line.match(/^(\d+)\.\s*(.+)/);
-                return match && parseInt(match[1]) === idx + 1;
-              });
+              // Parse Claude's numbered definitions
+              const translationsForCache = {};
+              stillNotFound.forEach((phrase, idx) => {
+                const definitionLine = lines.find(line => {
+                  const match = line.match(/^(\d+)\.\s*(.+)/);
+                  return match && parseInt(match[1]) === idx + 1;
+                });
 
-              if (definitionLine) {
-                const match = definitionLine.match(/^\d+\.\s*(.+)/);
-                if (match) {
-                  definitions[phrase] = {
-                    pinyin: '',
-                    definitions: match[1].trim()
-                  };
-                  console.log(`[Backend] Claude definition for "${phrase}": ${match[1].trim()}`);
+                if (definitionLine) {
+                  const match = definitionLine.match(/^\d+\.\s*(.+)/);
+                  if (match) {
+                    const definition = match[1].trim();
+                    definitions[phrase] = {
+                      pinyin: '',
+                      definitions: definition
+                    };
+                    translationsForCache[phrase] = definition;
+                    console.log(`[Backend] Claude definition for "${phrase}": ${definition}`);
+                  } else {
+                    definitions[phrase] = {
+                      pinyin: '',
+                      definitions: 'No definition found'
+                    };
+                  }
                 } else {
                   definitions[phrase] = {
                     pinyin: '',
                     definitions: 'No definition found'
                   };
                 }
-              } else {
+              });
+
+              // Save translations to cache if audio_hash provided
+              if (audio_hash && Object.keys(translationsForCache).length > 0) {
+                console.log(`[Backend] Caching ${Object.keys(translationsForCache).length} translations for audio hash: ${audio_hash.substring(0, 8)}...`);
+
+                const cacheSaveStart = Date.now();
+                const { error: cacheError } = await supabase
+                  .from('transcript_translations')
+                  .upsert({
+                    audio_hash: audio_hash,
+                    translations: translationsForCache
+                  }, {
+                    onConflict: 'audio_hash'
+                  });
+                const cacheSaveTime = Date.now() - cacheSaveStart;
+
+                if (cacheError) {
+                  console.error('[Backend] Error caching translations:', cacheError);
+                } else {
+                  console.log(`[Backend] Successfully cached translations for audio hash (save: ${cacheSaveTime}ms)`);
+                }
+              }
+            } else {
+              console.error('[Backend] Claude API error:', claudeResponse.status);
+              // Set fallback for phrases not found
+              stillNotFound.forEach(phrase => {
                 definitions[phrase] = {
                   pinyin: '',
                   definitions: 'No definition found'
                 };
-              }
-            });
-          } else {
-            console.error('[Backend] Claude API error:', claudeResponse.status);
+              });
+            }
+          } catch (claudeError) {
+            console.error('[Backend] Error calling Claude for definitions:', claudeError);
             // Set fallback for phrases not found
-            phrasesNotFound.forEach(phrase => {
+            stillNotFound.forEach(phrase => {
               definitions[phrase] = {
                 pinyin: '',
                 definitions: 'No definition found'
               };
             });
           }
-        } catch (claudeError) {
-          console.error('[Backend] Error calling Claude for definitions:', claudeError);
-          // Set fallback for phrases not found
-          phrasesNotFound.forEach(phrase => {
+        } else {
+          // No API key, set fallback
+          stillNotFound.forEach(phrase => {
             definitions[phrase] = {
               pinyin: '',
               definitions: 'No definition found'
             };
           });
         }
-      } else {
-        // No API key, set fallback
-        phrasesNotFound.forEach(phrase => {
-          definitions[phrase] = {
-            pinyin: '',
-            definitions: 'No definition found'
-          };
-        });
       }
     }
 
@@ -537,6 +602,43 @@ ${numberedTitles}`
   }
 });
 
+// Cache check endpoint (no file upload required)
+app.post('/api/check-transcript-cache', async (req, res) => {
+  try {
+    const { file_hash } = req.body;
+
+    if (!file_hash) {
+      return res.status(400).json({ error: 'No file hash provided' });
+    }
+
+    console.log(`[Cache Check] Looking up hash: ${file_hash.substring(0, 8)}...`);
+
+    const cacheCheckStart = Date.now();
+    const { data: existingTranscript, error: fetchError } = await supabase
+      .from('audio_transcripts')
+      .select('*')
+      .eq('file_hash', file_hash)
+      .single();
+    const cacheCheckTime = Date.now() - cacheCheckStart;
+
+    if (existingTranscript && !fetchError) {
+      console.log(`[Cache Check] Cache HIT! (lookup: ${cacheCheckTime}ms)`);
+      return res.json({
+        cached: true,
+        transcript: existingTranscript.transcript,
+        language_code: existingTranscript.language_code,
+        language_probability: existingTranscript.language_probability
+      });
+    }
+
+    console.log(`[Cache Check] Cache MISS (lookup: ${cacheCheckTime}ms)`);
+    return res.json({ cached: false });
+  } catch (error) {
+    console.error('[Cache Check] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Transcription endpoint
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   try {
@@ -548,28 +650,15 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
     const fileName = req.file.originalname;
     const fileSize = req.file.size;
 
-    // Calculate SHA-256 hash of the file for deduplication
-    const fileHash = crypto.createHash('sha256').update(audioBuffer).digest('hex');
-    console.log(`[Transcribe] Processing file: ${fileName}, hash: ${fileHash.substring(0, 8)}...`);
+    // Get hash from client (required)
+    const fileHash = req.body.file_hash;
 
-    // Check if we already have a transcript for this file
-    const { data: existingTranscript, error: fetchError } = await supabase
-      .from('audio_transcripts')
-      .select('*')
-      .eq('file_hash', fileHash)
-      .single();
-
-    if (existingTranscript && !fetchError) {
-      console.log(`[Transcribe] Cache HIT! Returning cached transcript`);
-      return res.json({
-        cached: true,
-        transcript: existingTranscript.transcript,
-        language_code: existingTranscript.language_code,
-        language_probability: existingTranscript.language_probability
-      });
+    if (!fileHash) {
+      return res.status(400).json({ error: 'file_hash is required (calculate on client)' });
     }
 
-    console.log(`[Transcribe] Cache MISS. Calling ElevenLabs API...`);
+    console.log(`[Transcribe] Processing file: ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)}MB), hash: ${fileHash.substring(0, 8)}...`);
+    console.log(`[Transcribe] Calling ElevenLabs API...`);
 
     // No cached transcript, call ElevenLabs API
     const elevenlabsApiKey = process.env.ELEVENLABS_API_KEY;
@@ -631,7 +720,8 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
       cached: false,
       transcript: transcriptData,
       language_code: transcriptData.language_code,
-      language_probability: transcriptData.language_probability
+      language_probability: transcriptData.language_probability,
+      audio_hash: fileHash
     });
 
   } catch (error) {
