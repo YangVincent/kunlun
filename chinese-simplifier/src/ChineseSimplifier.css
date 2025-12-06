@@ -644,17 +644,18 @@
 }
 
 .mode-option {
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.85rem;
   border: none;
   background: transparent;
   color: var(--color-ink);
   font-family: var(--font-display);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-base);
   border-right: 1px solid var(--color-paper-darker);
   position: relative;
+  white-space: nowrap;
 }
 
 .mode-option:last-child {
@@ -727,6 +728,69 @@
   }
 
   .pinyin-mode rt {
+    font-size: 0.6em;
+  }
+}
+
+/* Translation mode - apply same pinyin styling as pinyin mode */
+.translation-mode {
+  line-height: 2;
+}
+
+.sentence-block {
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-paper-dark);
+}
+
+.sentence-block:last-child {
+  border-bottom: none;
+}
+
+.sentence-translation {
+  color: var(--color-ink-lighter);
+  font-size: 0.95rem;
+  margin-bottom: var(--space-xs);
+  font-style: italic;
+  line-height: 1.6;
+}
+
+.sentence-chinese {
+  font-size: 1.1rem;
+  color: var(--color-ink);
+  line-height: 2.8;
+  cursor: default;
+}
+
+/* Apply same pinyin styling as pinyin-mode to translation mode */
+.sentence-chinese ruby {
+  ruby-align: center;
+  ruby-position: over;
+}
+
+.sentence-chinese rt {
+  font-family: var(--font-mono);
+  font-size: 0.65em;
+  color: var(--color-vermillion);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-align: center;
+  user-select: none;
+  padding: 0 0.1em;
+}
+
+.sentence-chinese ruby + ruby {
+  margin-left: 0.05em;
+}
+
+@media (max-width: 768px) {
+  .sentence-chinese {
+    font-size: 1rem;
+    line-height: 2.6;
+  }
+
+  .sentence-chinese rt {
     font-size: 0.6em;
   }
 }
@@ -804,6 +868,13 @@
   padding-top: 6px;
   margin-top: 4px;
   font-style: italic;
+}
+
+/* When tooltip only has translation (no pinyin) - remove top spacing */
+.char-tooltip .tooltip-translation:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
 }
 
 .tooltip-meaning {

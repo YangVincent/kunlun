@@ -31,6 +31,14 @@ export function ChineseTextDisplay({
     };
   }, [activeCharIndex]);
 
+  // Helper function to split text into sentences
+  const splitIntoSentences = (text) => {
+    // Split by common Chinese sentence endings and punctuation
+    const sentenceRegex = /([^。！？.!?\n]+[。！？.!?\n]|[^。！？.!?\n]+$)/g;
+    const sentences = text.match(sentenceRegex) || [text];
+    return sentences.filter(s => s.trim().length > 0);
+  };
+
   // Helper function to render text with pinyin above characters
   const renderTextWithPinyin = (text) => {
     return text.split('').map((char, idx) => {
@@ -51,7 +59,7 @@ export function ChineseTextDisplay({
   };
 
   // Component to render a phrase with tooltip
-  const ChinesePhrase = ({ phrase, index }) => {
+  const ChinesePhrase = ({ phrase, index, showPinyin = true, showPinyinAbove = false }) => {
     const [hoverActive, setHoverActive] = useState(false);
     const [tooltipStyle, setTooltipStyle] = useState({ opacity: 0 });
     const spanRef = useRef(null);
@@ -103,6 +111,44 @@ export function ChineseTextDisplay({
       }
     }, [isActive, translation]);
 
+    // If we need to show pinyin above characters (translation mode)
+    if (showPinyinAbove) {
+      return (
+        <span
+          ref={spanRef}
+          className="interactive-char"
+          onMouseEnter={() => setHoverActive(true)}
+          onMouseLeave={() => setHoverActive(false)}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            setActiveCharIndex(uniqueIndex);
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveCharIndex(activeCharIndex === uniqueIndex ? null : uniqueIndex);
+          }}
+        >
+          {phrase.text.split('').map((char, idx) => {
+            if (!/[\u4e00-\u9fa5]/.test(char)) {
+              return <span key={idx}>{char}</span>;
+            }
+            const charPinyin = pinyin(char, { toneType: 'symbol', type: 'array' })[0];
+            return (
+              <ruby key={idx}>
+                {char}
+                <rt>{charPinyin}</rt>
+              </ruby>
+            );
+          })}
+          {isActive && displayMode === 'translation' && (
+            <span ref={tooltipRef} className="char-tooltip" style={tooltipStyle}>
+              <div className="tooltip-translation">{translation}</div>
+            </span>
+          )}
+        </span>
+      );
+    }
+
     return (
       <span
         ref={spanRef}
@@ -119,9 +165,9 @@ export function ChineseTextDisplay({
         }}
       >
         {phrase.text}
-        {isActive && displayMode === 'tooltips' && (
+        {isActive && (displayMode === 'tooltips' || displayMode === 'translation') && (
           <span ref={tooltipRef} className="char-tooltip" style={tooltipStyle}>
-            <div className="tooltip-pinyin">{phrasePinyin}</div>
+            {showPinyin && <div className="tooltip-pinyin">{phrasePinyin}</div>}
             <div className="tooltip-translation">{translation}</div>
           </span>
         )}
@@ -207,7 +253,66 @@ export function ChineseTextDisplay({
   };
 
   // Render based on display mode
-  if (displayMode === 'pinyin') {
+  if (displayMode === 'translation') {
+    const sentences = splitIntoSentences(text);
+
+    return (
+      <div className="translation-mode">
+        {sentences.map((sentence, sentenceIdx) => {
+          // Get translation for this sentence from phraseTranslations
+          const translation = phraseTranslations[sentence.trim()] || 'Translating...';
+
+          // If we have phrases, use them for tooltips, otherwise fall back to character-by-character
+          if (phrases && phrases.length > 0) {
+            // Find the phrases that belong to this sentence
+            const sentencePhrases = [];
+            let currentPos = 0;
+
+            // Find where this sentence starts in the original text
+            const sentenceStart = text.indexOf(sentence);
+            const sentenceEnd = sentenceStart + sentence.length;
+
+            // Get phrases that fall within this sentence
+            phrases.forEach((phrase, idx) => {
+              if (phrase.start >= sentenceStart && phrase.end <= sentenceEnd) {
+                sentencePhrases.push({ ...phrase, originalIndex: idx });
+              }
+            });
+
+            return (
+              <div key={sentenceIdx} className="sentence-block">
+                <div className="sentence-translation">{translation}</div>
+                <div className="sentence-chinese">
+                  {sentencePhrases.length > 0 ? (
+                    sentencePhrases.map((phrase) => (
+                      <ChinesePhrase
+                        key={phrase.originalIndex}
+                        phrase={phrase}
+                        index={phrase.originalIndex}
+                        showPinyin={false}
+                        showPinyinAbove={true}
+                      />
+                    ))
+                  ) : (
+                    renderTextWithPinyin(sentence)
+                  )}
+                </div>
+              </div>
+            );
+          } else {
+            return (
+              <div key={sentenceIdx} className="sentence-block">
+                <div className="sentence-translation">{translation}</div>
+                <div className="sentence-chinese">
+                  {renderTextWithPinyin(sentence)}
+                </div>
+              </div>
+            );
+          }
+        })}
+      </div>
+    );
+  } else if (displayMode === 'pinyin') {
     return (
       <div className="pinyin-mode">
         {renderTextWithPinyin(text)}
@@ -241,7 +346,7 @@ export function ChineseTextDisplay({
 
 /**
  * Display mode selector component
- * Three-way segmented control for Plain/Pinyin/Tooltips
+ * Four-way segmented control for Plain/Pinyin/Translation/Tooltips
  */
 export function DisplayModeSelector({ displayMode, onDisplayModeChange }) {
   return (
@@ -257,6 +362,12 @@ export function DisplayModeSelector({ displayMode, onDisplayModeChange }) {
         className={`mode-option ${displayMode === 'pinyin' ? 'active' : ''}`}
       >
         Pinyin
+      </button>
+      <button
+        onClick={() => onDisplayModeChange('translation')}
+        className={`mode-option ${displayMode === 'translation' ? 'active' : ''}`}
+      >
+        Translation
       </button>
       <button
         onClick={() => onDisplayModeChange('tooltips')}
@@ -276,7 +387,14 @@ export function usePhraseSegmentation(apiUrl = '') {
   const [phraseTranslations, setPhraseTranslations] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
-  const segmentAndTranslate = async (text, audioHash = null) => {
+  // Helper function to split text into sentences
+  const splitIntoSentences = (text) => {
+    const sentenceRegex = /([^。！？.!?\n]+[。！？.!?\n]|[^。！？.!?\n]+$)/g;
+    const sentences = text.match(sentenceRegex) || [text];
+    return sentences.filter(s => s.trim().length > 0).map(s => s.trim());
+  };
+
+  const segmentAndTranslate = async (text, textHash = null, fetchSentences = false) => {
     if (!text) {
       setPhrases([]);
       setPhraseTranslations({});
@@ -288,70 +406,71 @@ export function usePhraseSegmentation(apiUrl = '') {
     const totalStart = performance.now();
 
     try {
-      const segmentStart = performance.now();
-      console.log('[Frontend] Starting text segmentation...');
+      // Calculate text hash if not provided
+      let hash = textHash;
+      if (!hash) {
+        const hashStart = performance.now();
+        const encoder = new TextEncoder();
+        const data = encoder.encode(text);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        console.log(`[Frontend] Calculated text_hash in ${(performance.now() - hashStart).toFixed(0)}ms: ${hash.substring(0, 8)}...`);
+      }
 
-      const segmentResponse = await fetch(`${apiUrl}/api/segment-text`, {
+      console.log(`[Frontend] Analyzing text (include_sentences: ${fetchSentences})...`);
+
+      const analyzeStart = performance.now();
+      const analyzeResponse = await fetch(`${apiUrl}/api/analyze-text`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          text_hash: hash,
+          include_sentences: fetchSentences
+        }),
       });
 
-      if (!segmentResponse.ok) {
-        throw new Error('Failed to segment text');
+      if (!analyzeResponse.ok) {
+        throw new Error('Failed to analyze text');
       }
 
-      const { phrases: segmentedPhrases } = await segmentResponse.json();
-      const segmentTime = performance.now() - segmentStart;
-      console.log(`[Frontend] Text segmented in ${segmentTime.toFixed(0)}ms (${segmentedPhrases.length} phrases)`);
+      const { phrases: segmentedPhrases, definitions, sentence_translations } = await analyzeResponse.json();
+      const analyzeTime = performance.now() - analyzeStart;
+
+      console.log(`[Frontend] Text analyzed in ${analyzeTime.toFixed(0)}ms (${segmentedPhrases.length} phrases, ${Object.keys(definitions).length} definitions)`);
 
       setPhrases(segmentedPhrases);
 
-      const chinesePhrases = segmentedPhrases
-        .filter(p => /[\u4e00-\u9fa5]/.test(p.text))
-        .map(p => p.text);
-
-      if (chinesePhrases.length > 0) {
-        const requestBody = { phrases: chinesePhrases };
-        if (audioHash) {
-          requestBody.audio_hash = audioHash;
-          console.log(`[Frontend] Requesting definitions with audio_hash: ${audioHash.substring(0, 8)}...`);
-        } else {
-          console.log('[Frontend] Requesting definitions without audio_hash (no caching)');
-        }
-
-        const definitionStart = performance.now();
-
-        const definitionResponse = await fetch(`${apiUrl}/api/lookup-definitions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        const { definitions } = await definitionResponse.json();
-        const definitionTime = performance.now() - definitionStart;
-
-        console.log(`[Frontend] Definitions loaded in ${definitionTime.toFixed(0)}ms (${Object.keys(definitions).length} phrases)`);
-
-        const translations = {};
-        for (const [phrase, data] of Object.entries(definitions)) {
-          translations[phrase] = data.definitions;
-        }
-
-        setPhraseTranslations(translations);
+      const translations = {};
+      for (const [phrase, data] of Object.entries(definitions)) {
+        translations[phrase] = data.definitions;
       }
 
+      // Add sentence translations if present
+      if (sentence_translations) {
+        Object.assign(translations, sentence_translations);
+        console.log(`[Frontend] Loaded ${Object.keys(sentence_translations).length} sentence translations`);
+      }
+
+      setPhraseTranslations(translations);
+
       const totalTime = performance.now() - totalStart;
-      console.log(`[Frontend] Total translation process: ${totalTime.toFixed(0)}ms`);
+      console.log(`[Frontend] Total process: ${totalTime.toFixed(0)}ms`);
     } catch (err) {
-      console.error('[Frontend] Error segmenting/translating text:', err);
+      console.error('[Frontend] Error analyzing text:', err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchSentenceTranslations = async (text, textHash = null) => {
+    if (!text) return;
+
+    // Just re-call segmentAndTranslate with include_sentences = true
+    await segmentAndTranslate(text, textHash, true);
   };
 
   const reset = () => {
@@ -360,5 +479,5 @@ export function usePhraseSegmentation(apiUrl = '') {
     setIsLoading(false);
   };
 
-  return { phrases, phraseTranslations, isLoading, segmentAndTranslate, reset };
+  return { phrases, phraseTranslations, isLoading, segmentAndTranslate, fetchSentenceTranslations, reset };
 }

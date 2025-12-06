@@ -17,7 +17,7 @@ export default function Listen() {
   const fileInputRef = useRef(null);
 
   // Phrase segmentation for transcript display
-  const { phrases, phraseTranslations, isLoading: isLoadingTranslations, segmentAndTranslate, reset } = usePhraseSegmentation();
+  const { phrases, phraseTranslations, isLoading: isLoadingTranslations, segmentAndTranslate, fetchSentenceTranslations, reset } = usePhraseSegmentation();
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -177,13 +177,28 @@ export default function Listen() {
   // Process transcript text when available
   useEffect(() => {
     if (transcript?.text) {
-      console.log('[Listen] Transcript object:', transcript);
-      console.log('[Listen] Audio hash:', transcript.audio_hash);
-      segmentAndTranslate(transcript.text, transcript.audio_hash);
+      console.log('[Listen] Transcript text available');
+      // Note: segmentAndTranslate will calculate text_hash from the text
+      segmentAndTranslate(transcript.text);
     } else {
       reset();
     }
   }, [transcript]);
+
+  // Fetch sentence translations when switching to translation mode
+  useEffect(() => {
+    if (displayMode === 'translation' && transcript?.text) {
+      // Check if we already have sentence translations
+      const hasSentenceTranslations = Object.keys(phraseTranslations).some(key =>
+        key.length > 10 && (key.includes('。') || key.includes('！') || key.includes('？'))
+      );
+
+      if (!hasSentenceTranslations) {
+        console.log('[Listen] Switching to translation mode - fetching sentence translations');
+        fetchSentenceTranslations(transcript.text);
+      }
+    }
+  }, [displayMode]);
 
   const handleWordClick = (startTime) => {
     if (audioRef.current) {

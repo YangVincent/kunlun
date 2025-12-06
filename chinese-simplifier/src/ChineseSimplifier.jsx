@@ -67,13 +67,15 @@ export default function ChineseSimplifier() {
   const {
     phrases: simplifiedPhrases,
     phraseTranslations: simplifiedTranslations,
-    segmentAndTranslate: segmentSimplified
+    segmentAndTranslate: segmentSimplified,
+    fetchSentenceTranslations: fetchSimplifiedSentences
   } = usePhraseSegmentation();
 
   const {
     phrases: fetchedPhrases,
     phraseTranslations: fetchedTranslations,
-    segmentAndTranslate: segmentFetched
+    segmentAndTranslate: segmentFetched,
+    fetchSentenceTranslations: fetchFetchedSentences
   } = usePhraseSegmentation();
 
   const fetchTextFromUrl = async () => {
@@ -285,7 +287,11 @@ Respond with ONLY a JSON array, no other text.`
 
   // Effect to segment and translate when tooltips are enabled
   useEffect(() => {
+    console.log('[Simplifier] displayMode changed to:', displayMode);
+    console.log('[Simplifier] simplifiedText:', !!simplifiedText, 'fetchedText:', !!fetchedText);
+
     if (displayMode === 'tooltips' && simplifiedText && simplifiedPhrases.length === 0) {
+      console.log('[Simplifier] Segmenting simplified text for tooltips');
       segmentSimplified(simplifiedText);
     }
   }, [displayMode, simplifiedText]);
@@ -293,9 +299,41 @@ Respond with ONLY a JSON array, no other text.`
   // Effect to segment and translate fetched text
   useEffect(() => {
     if (displayMode === 'tooltips' && fetchedText && fetchedPhrases.length === 0) {
+      console.log('[Simplifier] Segmenting fetched text for tooltips');
       segmentFetched(fetchedText);
     }
   }, [displayMode, fetchedText]);
+
+  // Fetch sentence translations when switching to translation mode
+  useEffect(() => {
+    if (displayMode === 'translation') {
+      console.log('[Simplifier] Translation mode activated');
+
+      if (simplifiedText) {
+        const hasSentences = Object.keys(simplifiedTranslations).some(key =>
+          key.length > 10 && (key.includes('。') || key.includes('！') || key.includes('？'))
+        );
+        console.log('[Simplifier] SimplifiedText - hasSentences:', hasSentences);
+
+        if (!hasSentences) {
+          console.log('[Simplifier] 🚀 Fetching sentence translations for simplified text');
+          fetchSimplifiedSentences(simplifiedText);
+        }
+      }
+
+      if (fetchedText) {
+        const hasSentences = Object.keys(fetchedTranslations).some(key =>
+          key.length > 10 && (key.includes('。') || key.includes('！') || key.includes('？'))
+        );
+        console.log('[Simplifier] FetchedText - hasSentences:', hasSentences);
+
+        if (!hasSentences) {
+          console.log('[Simplifier] 🚀 Fetching sentence translations for fetched text');
+          fetchFetchedSentences(fetchedText);
+        }
+      }
+    }
+  }, [displayMode]);
 
 
   return (

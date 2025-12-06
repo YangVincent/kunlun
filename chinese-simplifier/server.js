@@ -241,6 +241,355 @@ app.post('/api/segment-text', async (req, res) => {
   }
 });
 
+// Unified text analysis endpoint
+// Returns phrases, definitions, and sentence translations - all cached by text_hash
+app.post('/api/analyze-text', async (req, res) => {
+  try {
+    const { text, text_hash, include_sentences = false } = req.body;
+
+    if (!text || !text_hash) {
+      return res.status(400).json({ error: 'text and text_hash are required' });
+    }
+
+    console.log(`[Analyze] text_hash: ${text_hash.substring(0, 8)}..., include_sentences: ${include_sentences}`);
+
+    //Check cache first
+    const cacheStart = Date.now();
+    const { data: cachedAnalysis, error: cacheError } = await supabase
+      .from('text_analysis')
+      .select('*')
+      .eq('text_hash', text_hash)
+      .single();
+    const cacheTime = Date.now() - cacheStart;
+
+    if (cachedAnalysis && !cacheError) {
+      console.log(`[Analyze] Cache HIT! (lookup: ${cacheTime}ms)`);
+
+      // If we need sentences but don't have them cached, fetch them
+      if (include_sentences && !cachedAnalysis.sentence_translations) {
+        console.log(`[Analyze] Sentence translations not in cache, fetching...`);
+        // Will handle this below
+      } else {
+        return res.json({
+          phrases: cachedAnalysis.segmented_phrases,
+          definitions: cachedAnalysis.phrase_definitions,
+          sentence_translations: cachedAnalysis.sentence_translations
+        });
+      }
+    } else {
+      console.log(`[Analyze] Cache MISS (lookup: ${cacheTime}ms)`);
+    }
+
+    // Segment text
+    const segments = nodejieba.cut(text);
+    const phrases = [];
+    let currentIndex = 0;
+
+    for (const segment of segments) {
+      const start = text.indexOf(segment, currentIndex);
+      const end = start + segment.length;
+
+      phrases.push({
+        text: segment,
+        start: start,
+        end: end
+      });
+
+      currentIndex = end;
+    }
+
+    // Get phrase definitions
+    const definitions = {};
+    const phrasesNotFound = [];
+
+    for (const phrase of phrases) {
+      const chineseText = phrase.text;
+      if (!/[\u4e00-\u9fa5]/.test(chineseText)) continue;
+
+      try {
+        const entries = dictionary.getBySimplifiedChinese(chineseText);
+        if (entries && entries.length > 0) {
+          const firstEntry = entries[0];
+          definitions[chineseText] = {
+            pinyin: firstEntry.pinyin,
+            definitions: firstEntry.englishDefinitions.join('; ')
+          };
+        } else {
+          phrasesNotFound.push(chineseText);
+        }
+      } catch (e) {
+        phrasesNotFound.push(chineseText);
+      }
+    }
+
+    // Use Claude for phrases not in dictionary
+    if (phrasesNotFound.length > 0) {
+      console.log(`[Analyze] ${phrasesNotFound.length} phrases need Claude definitions`);
+
+      const apiKey = process.env.VITE_ANTHROPIC_API_KEY;
+      if (apiKey) {
+        const numberedPhrases = phrasesNotFound.map((p, i) => `${i + 1}. ${p}`).join('\n');
+
+        const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-haiku-20241022',
+            max_tokens: 2000,
+            messages: [{
+              role: 'user',
+              content: `For each Chinese phrase below, provide a concise English definition (5-10 words max). Return ONLY the definitions, one per line, in the same numbered order:
+
+${numberedPhrases}
+
+Return format:
+1. definition for first phrase
+2. definition for second phrase
+etc.`
+            }]
+          })
+        });
+
+        if (claudeResponse.ok) {
+          const claudeData = await claudeResponse.json();
+          const responseText = claudeData.content[0].text;
+          const lines = responseText.trim().split('\n').filter(line => line.trim());
+
+          phrasesNotFound.forEach((phrase, idx) => {
+            const definitionLine = lines.find(line => {
+              const match = line.match(/^(\d+)\.\s*(.+)/);
+              return match && parseInt(match[1]) === idx + 1;
+            });
+
+            if (definitionLine) {
+              const match = definitionLine.match(/^\d+\.\s*(.+)/);
+              if (match) {
+                definitions[phrase] = {
+                  pinyin: '',
+                  definitions: match[1].trim()
+                };
+              }
+            }
+          });
+        }
+      }
+    }
+
+    let sentenceTranslations = null;
+
+    // Get sentence translations if requested
+    if (include_sentences) {
+      const sentenceRegex = /([^。！？.!?\n]+[。！？.!?\n]|[^。！？.!?\n]+$)/g;
+      const sentences = (text.match(sentenceRegex) || [text]).filter(s => s.trim().length > 0).map(s => s.trim());
+
+      if (sentences.length > 0) {
+        console.log(`[Analyze] Translating ${sentences.length} sentences`);
+
+        const apiKey = process.env.VITE_ANTHROPIC_API_KEY;
+        if (apiKey) {
+          const numberedSentences = sentences.map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+          const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+              model: 'claude-3-5-haiku-20241022',
+              max_tokens: 4000,
+              messages: [{
+                role: 'user',
+                content: `Translate each Chinese sentence below into natural English. Return ONLY the translations, one per line, in the same numbered order:
+
+${numberedSentences}
+
+Return format:
+1. translation for first sentence
+2. translation for second sentence
+etc.`
+              }]
+            })
+          });
+
+          if (claudeResponse.ok) {
+            const claudeData = await claudeResponse.json();
+            const responseText = claudeData.content[0].text;
+            const lines = responseText.trim().split('\n').filter(line => line.trim());
+
+            sentenceTranslations = {};
+            sentences.forEach((sentence, idx) => {
+              const translationLine = lines.find(line => {
+                const match = line.match(/^(\d+)\.\s*(.+)/);
+                return match && parseInt(match[1]) === idx + 1;
+              });
+
+              if (translationLine) {
+                const match = translationLine.match(/^\d+\.\s*(.+)/);
+                if (match) {
+                  sentenceTranslations[sentence] = match[1].trim();
+                }
+              }
+            });
+          }
+        }
+      }
+    }
+
+    // Cache the analysis
+    const { error: upsertError } = await supabase
+      .from('text_analysis')
+      .upsert({
+        text_hash: text_hash,
+        segmented_phrases: phrases,
+        phrase_definitions: definitions,
+        sentence_translations: sentenceTranslations
+      }, {
+        onConflict: 'text_hash'
+      });
+
+    if (upsertError) {
+      console.error('[Analyze] Error caching analysis:', upsertError);
+    } else {
+      console.log(`[Analyze] Successfully cached analysis for text_hash: ${text_hash.substring(0, 8)}...`);
+    }
+
+    res.json({
+      phrases,
+      definitions,
+      sentence_translations: sentenceTranslations
+    });
+
+  } catch (error) {
+    console.error('[Analyze] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to translate full sentences
+app.post('/api/translate-sentences', async (req, res) => {
+  try {
+    const { sentences, audio_hash } = req.body;
+
+    if (!sentences || !Array.isArray(sentences)) {
+      return res.status(400).json({ error: 'Sentences array is required' });
+    }
+
+    console.log(`[Backend] Translating ${sentences.length} sentences (audio_hash: ${audio_hash ? audio_hash.substring(0, 8) + '...' : 'NONE'})`);
+
+    const translations = {};
+
+    // Check cache if audio_hash provided
+    if (audio_hash) {
+      const { data: cachedSentences, error: cacheError } = await supabase
+        .from('sentence_translations')
+        .select('translations')
+        .eq('audio_hash', audio_hash)
+        .single();
+
+      if (cachedSentences && !cacheError) {
+        console.log(`[Backend] Sentence translation cache HIT!`);
+        return res.json({ translations: cachedSentences.translations });
+      }
+
+      console.log(`[Backend] Sentence translation cache MISS. Calling Claude...`);
+    }
+
+    // Translate sentences using Claude
+    const apiKey = process.env.VITE_ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Anthropic API key not configured' });
+    }
+
+    try {
+      const numberedSentences = sentences.map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+      const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-haiku-20241022',
+          max_tokens: 4000,
+          messages: [{
+            role: 'user',
+            content: `Translate each Chinese sentence below into natural English. Return ONLY the translations, one per line, in the same numbered order:
+
+${numberedSentences}
+
+Return format:
+1. translation for first sentence
+2. translation for second sentence
+etc.`
+          }]
+        })
+      });
+
+      if (claudeResponse.ok) {
+        const claudeData = await claudeResponse.json();
+        const responseText = claudeData.content[0].text;
+        const lines = responseText.trim().split('\n').filter(line => line.trim());
+
+        // Parse Claude's numbered translations
+        sentences.forEach((sentence, idx) => {
+          const translationLine = lines.find(line => {
+            const match = line.match(/^(\d+)\.\s*(.+)/);
+            return match && parseInt(match[1]) === idx + 1;
+          });
+
+          if (translationLine) {
+            const match = translationLine.match(/^\d+\.\s*(.+)/);
+            if (match) {
+              translations[sentence] = match[1].trim();
+              console.log(`[Backend] Sentence ${idx + 1} translation: ${match[1].trim().substring(0, 50)}...`);
+            }
+          } else {
+            translations[sentence] = 'Translation unavailable';
+          }
+        });
+
+        // Cache translations if audio_hash provided
+        if (audio_hash && Object.keys(translations).length > 0) {
+          const { error: cacheError } = await supabase
+            .from('sentence_translations')
+            .upsert({
+              audio_hash: audio_hash,
+              translations: translations
+            }, {
+              onConflict: 'audio_hash'
+            });
+
+          if (cacheError) {
+            console.error('[Backend] Error caching sentence translations:', cacheError);
+          } else {
+            console.log(`[Backend] Successfully cached ${Object.keys(translations).length} sentence translations`);
+          }
+        }
+
+        res.json({ translations });
+      } else {
+        console.error('[Backend] Claude API error:', claudeResponse.status);
+        res.status(500).json({ error: 'Translation failed' });
+      }
+    } catch (claudeError) {
+      console.error('[Backend] Error calling Claude for translations:', claudeError);
+      res.status(500).json({ error: claudeError.message });
+    }
+  } catch (error) {
+    console.error('[Backend] Error translating sentences:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint to look up definitions for Chinese phrases
 app.post('/api/lookup-definitions', async (req, res) => {
   try {

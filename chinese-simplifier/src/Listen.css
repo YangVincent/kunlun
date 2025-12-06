@@ -457,6 +457,35 @@
   }
 }
 
+/* Translation Mode Styles */
+.translation-mode {
+  line-height: 2;
+}
+
+.sentence-block {
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-paper-dark);
+}
+
+.sentence-block:last-child {
+  border-bottom: none;
+}
+
+.sentence-translation {
+  color: var(--color-ink-lighter);
+  font-size: 0.95rem;
+  margin-bottom: var(--space-xs);
+  font-style: italic;
+  line-height: 1.6;
+}
+
+.sentence-chinese {
+  font-size: 1.1rem;
+  color: var(--color-ink);
+  line-height: 2.2;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from {
