@@ -274,6 +274,13 @@
   gap: var(--space-md);
 }
 
+.card-header-controls {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .card-title {
   display: flex;
   align-items: center;
@@ -292,7 +299,7 @@
 
 /* Mode selector */
 .mode-selector {
-  display: flex;
+  display: inline-flex;
   gap: var(--space-xs);
   background: var(--color-paper-dark);
   padding: 4px;
@@ -499,11 +506,11 @@
   background: rgba(200, 53, 30, 0.05);
 }
 
-.action-buttons {
-  display: flex;
-  gap: var(--space-xs);
-  flex-wrap: wrap;
-  align-items: center;
+.card-header-controls .primary-btn,
+.card-header-controls .secondary-btn {
+  padding: 0.65rem 1.25rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 .btn-loading {
@@ -681,21 +688,46 @@
 
 @media (max-width: 1024px) {
   .mode-option {
-    padding: 0.5rem 0.65rem;
-    font-size: 0.8rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
   }
 }
 
 @media (max-width: 768px) {
+  .card-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .card-header-controls {
+    width: 100%;
+    flex-direction: column;
+  }
+
   .display-mode-selector {
     width: 100%;
-    margin-bottom: 0.5rem;
   }
 
   .mode-option {
     flex: 1;
     padding: 0.6rem 0.5rem;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .card-header-controls .primary-btn,
+  .card-header-controls .secondary-btn {
+    width: 100%;
+    padding: 0.65rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .mode-selector {
+    width: 100%;
+  }
+
+  .mode-btn {
+    flex: 1;
+    justify-content: center;
   }
 }
 

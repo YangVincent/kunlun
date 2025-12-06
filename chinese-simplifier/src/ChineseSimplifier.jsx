@@ -285,6 +285,19 @@ Respond with ONLY a JSON array, no other text.`
     }
   };
 
+  // Clear error when user types in URL or text field
+  useEffect(() => {
+    if (urlInput && error) {
+      setError('');
+    }
+  }, [urlInput]);
+
+  useEffect(() => {
+    if (inputText && error) {
+      setError('');
+    }
+  }, [inputText]);
+
   // Effect to segment and translate when tooltips are enabled
   useEffect(() => {
     console.log('[Simplifier] displayMode changed to:', displayMode);
@@ -476,7 +489,7 @@ Respond with ONLY a JSON array, no other text.`
                 <span className="title-icon">📄</span>
                 Fetched Article
               </h2>
-              <div className="action-buttons">
+              <div className="card-header-controls">
                 <DisplayModeSelector
                   displayMode={displayMode}
                   onDisplayModeChange={setDisplayMode}
@@ -518,7 +531,7 @@ Respond with ONLY a JSON array, no other text.`
                 <span className="title-icon">✦</span>
                 Simplified Version (HSK {hskLevel})
               </h2>
-              <div className="action-buttons">
+              <div className="card-header-controls">
                 <DisplayModeSelector
                   displayMode={displayMode}
                   onDisplayModeChange={setDisplayMode}
