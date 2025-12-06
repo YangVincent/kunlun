@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import './Listen.css';
 import { ChineseTextDisplay, DisplayModeSelector, usePhraseSegmentation } from './ChineseTextDisplay';
+import { saveAudioFile, loadAudioFile, clearAudioFile, updateAudioMetadata } from './audioStorage';
 
 export default function Listen() {
   const [audioFile, setAudioFile] = useState(null);
@@ -13,13 +14,87 @@ export default function Listen() {
   const [transcriptError, setTranscriptError] = useState(null);
   const [isCached, setIsCached] = useState(false);
   const [displayMode, setDisplayMode] = useState('tooltips');
+  const [isRestoring, setIsRestoring] = useState(true);
   const audioRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Phrase segmentation for transcript display
   const { phrases, phraseTranslations, isLoading: isLoadingTranslations, segmentAndTranslate, fetchSentenceTranslations, reset } = usePhraseSegmentation();
 
-  const handleFileSelect = (event) => {
+  // Helper to create blob URL from file
+  const createBlobUrl = useCallback((file) => {
+    return URL.createObjectURL(file);
+  }, []);
+
+  // Restore audio file from IndexedDB on mount
+  useEffect(() => {
+    const restoreAudio = async () => {
+      try {
+        const saved = await loadAudioFile();
+        if (saved) {
+          console.log('[Listen] Restoring audio from IndexedDB:', saved.file.name);
+          const url = createBlobUrl(saved.file);
+          setAudioFile(saved.file);
+          setAudioUrl(url);
+
+          // Restore metadata
+          if (saved.metadata.transcript) {
+            setTranscript(saved.metadata.transcript);
+            setIsCached(saved.metadata.isCached || false);
+          }
+          if (saved.metadata.displayMode) {
+            setDisplayMode(saved.metadata.displayMode);
+          }
+          if (saved.metadata.playbackSpeed) {
+            setPlaybackSpeed(saved.metadata.playbackSpeed);
+          }
+        }
+      } catch (error) {
+        console.error('[Listen] Error restoring audio:', error);
+      } finally {
+        setIsRestoring(false);
+      }
+    };
+
+    restoreAudio();
+  }, [createBlobUrl]);
+
+  // Handle visibility change - recreate blob URL when tab becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && audioFile) {
+        // Check if the current blob URL is still valid by trying to fetch it
+        try {
+          const response = await fetch(audioUrl, { method: 'HEAD' });
+          if (!response.ok) throw new Error('Blob URL invalid');
+        } catch {
+          // Blob URL is invalid, recreate it from the file
+          console.log('[Listen] Recreating blob URL after tab switch');
+          if (audioUrl) {
+            URL.revokeObjectURL(audioUrl);
+          }
+          const newUrl = createBlobUrl(audioFile);
+          setAudioUrl(newUrl);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [audioFile, audioUrl, createBlobUrl]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+    };
+  }, []);
+
+  const handleFileSelect = async (event) => {
     const file = event.target.files[0];
     if (file) {
       // Check if it's an audio file
@@ -38,6 +113,15 @@ export default function Listen() {
       setAudioFile(file);
       setAudioUrl(url);
       setIsPlaying(false);
+
+      // Reset transcript state for new file
+      setTranscript(null);
+      setTranscriptError(null);
+      setIsCached(false);
+
+      // Save to IndexedDB for persistence
+      await saveAudioFile(file, { displayMode, playbackSpeed });
+      console.log('[Listen] Audio file saved to IndexedDB');
     }
   };
 
@@ -56,7 +140,7 @@ export default function Listen() {
     setIsPlaying(false);
   };
 
-  const handleClear = () => {
+  const handleClear = async () => {
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
     }
@@ -70,6 +154,10 @@ export default function Listen() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+
+    // Clear from IndexedDB
+    await clearAudioFile();
+    console.log('[Listen] Audio file cleared from IndexedDB');
   };
 
   const handleSpeedChange = (speed) => {
@@ -200,6 +288,23 @@ export default function Listen() {
     }
   }, [displayMode]);
 
+  // Persist metadata changes to IndexedDB (transcript, displayMode, playbackSpeed)
+  useEffect(() => {
+    // Don't save during initial restore
+    if (isRestoring || !audioFile) return;
+
+    const saveMetadata = async () => {
+      await updateAudioMetadata({
+        transcript,
+        isCached,
+        displayMode,
+        playbackSpeed
+      });
+    };
+
+    saveMetadata();
+  }, [transcript, isCached, displayMode, playbackSpeed, isRestoring, audioFile]);
+
   const handleWordClick = (startTime) => {
     if (audioRef.current) {
       audioRef.current.currentTime = startTime;
@@ -238,7 +343,12 @@ export default function Listen() {
         <section className="upload-section">
           <h2>Upload Audio File</h2>
 
-          {!audioFile ? (
+          {isRestoring ? (
+            <div className="drop-zone" style={{ cursor: 'default' }}>
+              <div className="drop-zone-icon">Loading...</div>
+              <p className="drop-zone-text">Restoring previous session...</p>
+            </div>
+          ) : !audioFile ? (
             <div
               className="drop-zone"
               onDrop={handleDrop}
