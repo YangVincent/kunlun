@@ -167,6 +167,13 @@ export default function Listen() {
     }
   };
 
+  // Apply playback speed when audio element is ready
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+  }, [audioUrl, playbackSpeed]);
+
   const handleGenerateTranscript = async () => {
     if (!audioFile) return;
 
@@ -394,14 +401,6 @@ export default function Listen() {
             <h2>Audio Player</h2>
 
             <div className="audio-player">
-              <audio
-                ref={audioRef}
-                src={audioUrl}
-                onEnded={handleAudioEnded}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-              />
-
               {/* Speed Controls */}
               <div className="speed-controls">
                 <label className="speed-label">Playback Speed:</label>
@@ -419,21 +418,14 @@ export default function Listen() {
               </div>
 
               <div className="player-controls">
-                <button
-                  className="play-button"
-                  onClick={handlePlayPause}
-                >
-                  {isPlaying ? (
-                    <span className="control-icon">⏸</span>
-                  ) : (
-                    <span className="control-icon">▶</span>
-                  )}
-                </button>
-
                 <div className="audio-element">
                   <audio
+                    ref={audioRef}
                     controls
                     src={audioUrl}
+                    onEnded={handleAudioEnded}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
                     style={{ width: '100%' }}
                   />
                 </div>
