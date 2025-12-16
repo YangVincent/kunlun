@@ -55,7 +55,36 @@ export default function Vocabulary() {
     }
   };
 
+  const togglePin = async (wordId, currentPinned) => {
+    try {
+      const response = await fetch(`/api/highlighted-words/${wordId}/pin`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          pinned: !currentPinned
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update pin status');
+      }
+
+      setWords(words.map(w =>
+        w.id === wordId ? { ...w, pinned: !currentPinned } : w
+      ));
+    } catch (err) {
+      console.error('Error toggling pin:', err);
+      setError(err.message);
+    }
+  };
+
   const sortedWords = [...words].sort((a, b) => {
+    // Pinned words always come first
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+
+    // Then sort by selected criteria
     switch (sortBy) {
       case 'count':
         return b.highlight_count - a.highlight_count;
@@ -164,10 +193,19 @@ export default function Vocabulary() {
         ) : (
           <div className="words-grid">
             {sortedWords.map((word) => (
-              <div key={word.id} className="word-card">
+              <div key={word.id} className={`word-card ${word.pinned ? 'pinned' : ''}`}>
                 <div className="word-header">
                   <span className="word-chinese">{word.word}</span>
-                  <span className="word-count-badge">{word.highlight_count}×</span>
+                  <div className="word-header-actions">
+                    <button
+                      className={`pin-btn ${word.pinned ? 'active' : ''}`}
+                      onClick={() => togglePin(word.id, word.pinned)}
+                      title={word.pinned ? 'Unpin word' : 'Pin to top'}
+                    >
+                      {word.pinned ? '📌' : '📍'}
+                    </button>
+                    <span className="word-count-badge">{word.highlight_count}×</span>
+                  </div>
                 </div>
                 {word.pinyin && (
                   <div className="word-pinyin">{word.pinyin}</div>

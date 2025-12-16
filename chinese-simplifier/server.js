@@ -1178,6 +1178,36 @@ app.post('/api/highlighted-words', async (req, res) => {
   }
 });
 
+// Toggle pin status for a highlighted word
+app.patch('/api/highlighted-words/:id/pin', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id, pinned } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id is required' });
+    }
+
+    const { data, error } = await supabase
+      .from('highlighted_words')
+      .update({ pinned })
+      .eq('id', id)
+      .eq('user_id', user_id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Highlighted Words] Error updating pin:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ success: true, word: data });
+  } catch (error) {
+    console.error('[Highlighted Words] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Delete a highlighted word
 app.delete('/api/highlighted-words/:id', async (req, res) => {
   try {

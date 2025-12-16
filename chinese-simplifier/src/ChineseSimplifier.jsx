@@ -72,7 +72,7 @@ export default function ChineseSimplifier() {
   const [annotations, setAnnotations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [displayMode, setDisplayMode] = useState('tooltips'); // 'none', 'pinyin', 'tooltips'
+  const [displayMode, setDisplayMode] = useState('translation'); // 'none', 'pinyin', 'tooltips', 'translation'
   const [copySuccess, setCopySuccess] = useState(false);
 
   // Track if state has been restored from IndexedDB
@@ -389,36 +389,32 @@ Respond with ONLY a JSON array, no other text.`
     }
   }, [displayMode, fetchedText]);
 
-  // Fetch sentence translations when switching to translation mode
+  // Fetch sentence translations when in translation mode and text is available
   useEffect(() => {
-    if (displayMode === 'translation') {
-      console.log('[Simplifier] Translation mode activated');
+    if (displayMode === 'translation' && simplifiedText) {
+      const hasSentences = Object.keys(simplifiedTranslations).some(key =>
+        key.length > 10 && (key.includes('。') || key.includes('！') || key.includes('？'))
+      );
 
-      if (simplifiedText) {
-        const hasSentences = Object.keys(simplifiedTranslations).some(key =>
-          key.length > 10 && (key.includes('。') || key.includes('！') || key.includes('？'))
-        );
-        console.log('[Simplifier] SimplifiedText - hasSentences:', hasSentences);
-
-        if (!hasSentences) {
-          console.log('[Simplifier] 🚀 Fetching sentence translations for simplified text');
-          fetchSimplifiedSentences(simplifiedText);
-        }
-      }
-
-      if (fetchedText) {
-        const hasSentences = Object.keys(fetchedTranslations).some(key =>
-          key.length > 10 && (key.includes('。') || key.includes('！') || key.includes('？'))
-        );
-        console.log('[Simplifier] FetchedText - hasSentences:', hasSentences);
-
-        if (!hasSentences) {
-          console.log('[Simplifier] 🚀 Fetching sentence translations for fetched text');
-          fetchFetchedSentences(fetchedText);
-        }
+      if (!hasSentences) {
+        console.log('[Simplifier] Fetching sentence translations for simplified text');
+        fetchSimplifiedSentences(simplifiedText);
       }
     }
-  }, [displayMode]);
+  }, [displayMode, simplifiedText, simplifiedTranslations]);
+
+  useEffect(() => {
+    if (displayMode === 'translation' && fetchedText) {
+      const hasSentences = Object.keys(fetchedTranslations).some(key =>
+        key.length > 10 && (key.includes('。') || key.includes('！') || key.includes('？'))
+      );
+
+      if (!hasSentences) {
+        console.log('[Simplifier] Fetching sentence translations for fetched text');
+        fetchFetchedSentences(fetchedText);
+      }
+    }
+  }, [displayMode, fetchedText, fetchedTranslations]);
 
 
   return (

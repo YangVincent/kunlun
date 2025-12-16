@@ -11,7 +11,7 @@ export default function ChatInterface() {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [displayMode, setDisplayMode] = useState('tooltips'); // 'none', 'pinyin', 'tooltips'
+  const [displayMode, setDisplayMode] = useState('translation'); // 'none', 'pinyin', 'tooltips', 'translation'
   const [phrases, setPhrases] = useState({});
   const [phraseTranslations, setPhraseTranslations] = useState({});
   const messagesEndRef = useRef(null);

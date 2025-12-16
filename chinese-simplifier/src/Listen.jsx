@@ -36,7 +36,7 @@ export default function Listen() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptError, setTranscriptError] = useState(null);
   const [isCached, setIsCached] = useState(false);
-  const [displayMode, setDisplayMode] = useState('tooltips');
+  const [displayMode, setDisplayMode] = useState('translation');
   const [isRestoring, setIsRestoring] = useState(true);
   const audioRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -303,7 +303,7 @@ export default function Listen() {
     }
   }, [transcript]);
 
-  // Fetch sentence translations when switching to translation mode
+  // Fetch sentence translations when in translation mode and transcript is available
   useEffect(() => {
     if (displayMode === 'translation' && transcript?.text) {
       // Check if we already have sentence translations
@@ -312,11 +312,11 @@ export default function Listen() {
       );
 
       if (!hasSentenceTranslations) {
-        console.log('[Listen] Switching to translation mode - fetching sentence translations');
+        console.log('[Listen] Fetching sentence translations');
         fetchSentenceTranslations(transcript.text);
       }
     }
-  }, [displayMode]);
+  }, [displayMode, transcript?.text, phraseTranslations]);
 
   // Persist metadata changes to IndexedDB (transcript, displayMode, playbackSpeed)
   useEffect(() => {

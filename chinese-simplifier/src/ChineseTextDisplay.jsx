@@ -358,7 +358,7 @@ export function ChineseTextDisplay({
 
 /**
  * Display mode selector component
- * Four-way segmented control for Plain/Pinyin/Translation/Tooltips
+ * Four-way segmented control for Plain/Pinyin/Tooltips/Translation
  */
 export function DisplayModeSelector({ displayMode, onDisplayModeChange }) {
   return (
@@ -376,16 +376,16 @@ export function DisplayModeSelector({ displayMode, onDisplayModeChange }) {
         Pinyin
       </button>
       <button
-        onClick={() => onDisplayModeChange('translation')}
-        className={`mode-option ${displayMode === 'translation' ? 'active' : ''}`}
-      >
-        Translation
-      </button>
-      <button
         onClick={() => onDisplayModeChange('tooltips')}
         className={`mode-option ${displayMode === 'tooltips' ? 'active' : ''}`}
       >
         Tooltips
+      </button>
+      <button
+        onClick={() => onDisplayModeChange('translation')}
+        className={`mode-option ${displayMode === 'translation' ? 'active' : ''}`}
+      >
+        Translation
       </button>
     </div>
   );

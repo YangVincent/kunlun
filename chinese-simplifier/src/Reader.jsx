@@ -29,8 +29,8 @@ export default function Reader() {
   }, [user]);
   const [inputText, setInputText] = useState('');
   const [processedText, setProcessedText] = useState('');
-  const [displayMode, setDisplayMode] = useState('tooltips');
-  const { phrases, phraseTranslations, segmentAndTranslate, reset } = usePhraseSegmentation();
+  const [displayMode, setDisplayMode] = useState('translation');
+  const { phrases, phraseTranslations, segmentAndTranslate, fetchSentenceTranslations, reset } = usePhraseSegmentation();
 
   // Track if state has been restored from IndexedDB
   const stateRestored = useRef(false);
@@ -98,6 +98,20 @@ export default function Reader() {
     setProcessedText(text);
     await segmentAndTranslate(text);
   };
+
+  // Fetch sentence translations when in translation mode and text is available
+  useEffect(() => {
+    if (displayMode === 'translation' && processedText) {
+      const hasSentenceTranslations = Object.keys(phraseTranslations).some(key =>
+        key.length > 10 && (key.includes('。') || key.includes('！') || key.includes('？'))
+      );
+
+      if (!hasSentenceTranslations) {
+        console.log('[Reader] Fetching sentence translations');
+        fetchSentenceTranslations(processedText);
+      }
+    }
+  }, [displayMode, processedText, phraseTranslations]);
 
   // Handle paste event: process immediately
   const handlePaste = (e) => {

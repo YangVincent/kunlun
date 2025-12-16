@@ -115,6 +115,42 @@
   margin-bottom: var(--space-xs);
 }
 
+.word-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.pin-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.5;
+}
+
+.pin-btn:hover {
+  opacity: 1;
+  background: rgba(200, 53, 30, 0.1);
+}
+
+.pin-btn.active {
+  opacity: 1;
+}
+
+.word-card.pinned {
+  border-color: var(--color-vermillion);
+  background: rgba(255, 255, 255, 1);
+  box-shadow: var(--color-vermillion-light) 0 0 0 1px, var(--color-shadow) 0 2px 8px;
+}
+
 .word-chinese {
   font-family: var(--font-chinese);
   font-size: 1.75rem;
