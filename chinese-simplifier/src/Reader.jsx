@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import './Reader.css';
 import { ChineseTextDisplay, DisplayModeSelector, usePhraseSegmentation } from './ChineseTextDisplay';
+import { saveReaderState, loadReaderState, clearReaderState } from './textStorage';
 
 export default function Reader() {
   const [inputText, setInputText] = useState('');
@@ -9,8 +10,48 @@ export default function Reader() {
   const [displayMode, setDisplayMode] = useState('tooltips');
   const { phrases, phraseTranslations, segmentAndTranslate, reset } = usePhraseSegmentation();
 
+  // Track if state has been restored from IndexedDB
+  const stateRestored = useRef(false);
+
+  // Restore state from IndexedDB on mount
+  useEffect(() => {
+    const restoreState = async () => {
+      const saved = await loadReaderState();
+      if (saved) {
+        console.log('[Reader] Restoring state from IndexedDB');
+        if (saved.inputText) setInputText(saved.inputText);
+        if (saved.processedText) setProcessedText(saved.processedText);
+        if (saved.displayMode) setDisplayMode(saved.displayMode);
+
+        // Re-segment the text if we have processed text
+        if (saved.processedText) {
+          segmentAndTranslate(saved.processedText);
+        }
+      }
+      stateRestored.current = true;
+    };
+
+    restoreState();
+  }, []);
+
+  // Save state to IndexedDB when key values change
+  useEffect(() => {
+    if (!stateRestored.current) return;
+
+    const state = {
+      inputText,
+      processedText,
+      displayMode
+    };
+
+    saveReaderState(state);
+  }, [inputText, processedText, displayMode]);
+
   // Debounced processing: trigger 3 seconds after user stops typing
   useEffect(() => {
+    // Skip debounced processing if state was just restored
+    if (!stateRestored.current) return;
+
     if (!inputText.trim()) {
       setProcessedText('');
       reset();
@@ -53,6 +94,7 @@ export default function Reader() {
     setInputText('');
     setProcessedText('');
     reset();
+    clearReaderState();
   };
 
   return (

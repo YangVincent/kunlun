@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import './ChineseSimplifier.css';
 import { ChineseTextDisplay, DisplayModeSelector, usePhraseSegmentation } from './ChineseTextDisplay';
+import { saveSimplifierState, loadSimplifierState, clearSimplifierState } from './textStorage';
 
 const HSK_LEVELS = [
   { value: 1, label: 'HSK 1 (150 words)' },
@@ -43,6 +44,61 @@ export default function ChineseSimplifier() {
   const [urlInput, setUrlInput] = useState('');
   const [inputMode, setInputMode] = useState('url'); // 'text' or 'url'
   const [hskLevel, setHskLevel] = useState(3);
+  const [fetchedText, setFetchedText] = useState(''); // For URL-fetched article display
+  const [simplifiedText, setSimplifiedText] = useState('');
+  const [annotations, setAnnotations] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [displayMode, setDisplayMode] = useState('tooltips'); // 'none', 'pinyin', 'tooltips'
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  // Track if state has been restored from IndexedDB
+  const stateRestored = useRef(false);
+
+  // Restore state from IndexedDB on mount
+  useEffect(() => {
+    const restoreState = async () => {
+      // Don't restore if coming from news with a URL
+      if (location.state?.url) {
+        stateRestored.current = true;
+        return;
+      }
+
+      const saved = await loadSimplifierState();
+      if (saved) {
+        console.log('[Simplifier] Restoring state from IndexedDB');
+        if (saved.urlInput) setUrlInput(saved.urlInput);
+        if (saved.inputText) setInputText(saved.inputText);
+        if (saved.inputMode) setInputMode(saved.inputMode);
+        if (saved.hskLevel) setHskLevel(saved.hskLevel);
+        if (saved.fetchedText) setFetchedText(saved.fetchedText);
+        if (saved.simplifiedText) setSimplifiedText(saved.simplifiedText);
+        if (saved.annotations) setAnnotations(saved.annotations);
+        if (saved.displayMode) setDisplayMode(saved.displayMode);
+      }
+      stateRestored.current = true;
+    };
+
+    restoreState();
+  }, []);
+
+  // Save state to IndexedDB when key values change
+  useEffect(() => {
+    if (!stateRestored.current) return;
+
+    const state = {
+      urlInput,
+      inputText,
+      inputMode,
+      hskLevel,
+      fetchedText,
+      simplifiedText,
+      annotations,
+      displayMode
+    };
+
+    saveSimplifierState(state);
+  }, [urlInput, inputText, inputMode, hskLevel, fetchedText, simplifiedText, annotations, displayMode]);
 
   // Handle URL from route state (when coming from news search)
   useEffect(() => {
@@ -55,13 +111,6 @@ export default function ChineseSimplifier() {
       }, 100);
     }
   }, [location.state]);
-  const [fetchedText, setFetchedText] = useState(''); // For URL-fetched article display
-  const [simplifiedText, setSimplifiedText] = useState('');
-  const [annotations, setAnnotations] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [displayMode, setDisplayMode] = useState('tooltips'); // 'none', 'pinyin', 'tooltips'
-  const [copySuccess, setCopySuccess] = useState(false);
 
   // Use unified phrase segmentation hooks for both simplified and fetched text
   const {
