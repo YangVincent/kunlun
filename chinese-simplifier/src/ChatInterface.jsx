@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import './ChatInterface.css';
 import { ChineseTextDisplay, DisplayModeSelector } from './ChineseTextDisplay';
@@ -19,6 +19,26 @@ export default function ChatInterface() {
   // Use user ID if logged in, otherwise fall back to anonymous session ID
   const sessionId = useMemo(() => {
     return user?.id || getSessionId();
+  }, [user]);
+
+  // Handler for saving highlighted words
+  const handleWordHighlight = useCallback(async (word, pinyin, definition) => {
+    if (!user) return; // Only save for logged-in users
+
+    try {
+      await fetch('/api/highlighted-words', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          word,
+          pinyin,
+          definition
+        })
+      });
+    } catch (err) {
+      console.error('[Chat] Error saving highlighted word:', err);
+    }
   }, [user]);
 
   // Load chat history when session ID is determined
@@ -262,6 +282,7 @@ export default function ChatInterface() {
           phraseTranslations={phraseTranslations[message.id] || {}}
           displayMode={displayMode}
           uniqueId={`msg-${message.id}`}
+          onWordHighlight={handleWordHighlight}
         />
       </div>
     );

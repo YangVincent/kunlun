@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import './ChineseSimplifier.css';
 import { ChineseTextDisplay, DisplayModeSelector, usePhraseSegmentation } from './ChineseTextDisplay';
 import { saveSimplifierState, loadSimplifierState, clearSimplifierState } from './textStorage';
+import { useAuth } from './AuthContext';
 
 const HSK_LEVELS = [
   { value: 1, label: 'HSK 1 (150 words)' },
@@ -40,6 +41,28 @@ const SAMPLE_TEXT = {
 
 export default function ChineseSimplifier() {
   const location = useLocation();
+  const { user } = useAuth();
+
+  // Handler for saving highlighted words
+  const handleWordHighlight = useCallback(async (word, pinyin, definition) => {
+    if (!user) return; // Only save for logged-in users
+
+    try {
+      await fetch('/api/highlighted-words', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          word,
+          pinyin,
+          definition
+        })
+      });
+    } catch (err) {
+      console.error('[Simplifier] Error saving highlighted word:', err);
+    }
+  }, [user]);
+
   const [inputText, setInputText] = useState('');
   const [urlInput, setUrlInput] = useState('');
   const [inputMode, setInputMode] = useState('url'); // 'text' or 'url'
@@ -567,6 +590,7 @@ Respond with ONLY a JSON array, no other text.`
                 phraseTranslations={fetchedTranslations}
                 displayMode={displayMode}
                 uniqueId="fetched"
+                onWordHighlight={handleWordHighlight}
               />
             </div>
           </div>
@@ -601,6 +625,7 @@ Respond with ONLY a JSON array, no other text.`
                 phraseTranslations={simplifiedTranslations}
                 displayMode={displayMode}
                 uniqueId="simplified"
+                onWordHighlight={handleWordHighlight}
               />
             </div>
           </div>

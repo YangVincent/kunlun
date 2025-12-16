@@ -1,10 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import './Reader.css';
 import { ChineseTextDisplay, DisplayModeSelector, usePhraseSegmentation } from './ChineseTextDisplay';
 import { saveReaderState, loadReaderState, clearReaderState } from './textStorage';
+import { useAuth } from './AuthContext';
 
 export default function Reader() {
+  const { user } = useAuth();
+
+  // Handler for saving highlighted words
+  const handleWordHighlight = useCallback(async (word, pinyin, definition) => {
+    if (!user) return; // Only save for logged-in users
+
+    try {
+      await fetch('/api/highlighted-words', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          word,
+          pinyin,
+          definition
+        })
+      });
+    } catch (err) {
+      console.error('[Reader] Error saving highlighted word:', err);
+    }
+  }, [user]);
   const [inputText, setInputText] = useState('');
   const [processedText, setProcessedText] = useState('');
   const [displayMode, setDisplayMode] = useState('tooltips');
@@ -146,6 +168,7 @@ export default function Reader() {
                 phraseTranslations={phraseTranslations}
                 displayMode={displayMode}
                 uniqueId="reader"
+                onWordHighlight={handleWordHighlight}
               />
             </div>
           </section>

@@ -3,8 +3,31 @@ import { Link } from 'react-router-dom';
 import './Listen.css';
 import { ChineseTextDisplay, DisplayModeSelector, usePhraseSegmentation } from './ChineseTextDisplay';
 import { saveAudioFile, loadAudioFile, clearAudioFile, updateAudioMetadata } from './audioStorage';
+import { useAuth } from './AuthContext';
 
 export default function Listen() {
+  const { user } = useAuth();
+
+  // Handler for saving highlighted words
+  const handleWordHighlight = useCallback(async (word, pinyin, definition) => {
+    if (!user) return; // Only save for logged-in users
+
+    try {
+      await fetch('/api/highlighted-words', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          word,
+          pinyin,
+          definition
+        })
+      });
+    } catch (err) {
+      console.error('[Listen] Error saving highlighted word:', err);
+    }
+  }, [user]);
+
   const [audioFile, setAudioFile] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -481,6 +504,7 @@ export default function Listen() {
                   displayMode={displayMode}
                   phrases={phrases}
                   phraseTranslations={phraseTranslations}
+                  onWordHighlight={handleWordHighlight}
                 />
               </div>
             )}

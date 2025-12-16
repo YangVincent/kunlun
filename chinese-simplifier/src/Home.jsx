@@ -93,6 +93,20 @@ export default function Home() {
             </div>
           </Link>
 
+          {/* Vocabulary */}
+          <Link to="/vocabulary" className="feature-card">
+            <div className="feature-icon">词</div>
+            <h2 className="feature-title">My Vocabulary</h2>
+            <p className="feature-description">
+              Track words you've looked up while reading. Review your personalized vocabulary list and see which words you encounter most.
+            </p>
+            <div className="feature-tags">
+              <span className="tag">Word Tracking</span>
+              <span className="tag">Review</span>
+              <span className="tag">Sign In Required</span>
+            </div>
+          </Link>
+
         </div>
 
         <section className="about-section">

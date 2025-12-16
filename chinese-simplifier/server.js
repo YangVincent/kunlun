@@ -1079,6 +1079,133 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   }
 });
 
+// Get highlighted words for a user
+app.get('/api/highlighted-words', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id is required' });
+    }
+
+    const { data, error } = await supabase
+      .from('highlighted_words')
+      .select('*')
+      .eq('user_id', user_id)
+      .order('highlight_count', { ascending: false });
+
+    if (error) {
+      console.error('[Highlighted Words] Error fetching:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ words: data || [] });
+  } catch (error) {
+    console.error('[Highlighted Words] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Save or update a highlighted word
+app.post('/api/highlighted-words', async (req, res) => {
+  try {
+    const { user_id, word, pinyin, definition } = req.body;
+
+    if (!user_id || !word) {
+      return res.status(400).json({ error: 'user_id and word are required' });
+    }
+
+    // Check if word already exists for this user
+    const { data: existing, error: fetchError } = await supabase
+      .from('highlighted_words')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('word', word)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      // PGRST116 = no rows found, which is fine
+      console.error('[Highlighted Words] Error checking existing:', fetchError);
+      return res.status(500).json({ error: fetchError.message });
+    }
+
+    if (existing) {
+      // Update existing entry - increment count and append timestamp
+      const { data, error: updateError } = await supabase
+        .from('highlighted_words')
+        .update({
+          highlight_count: existing.highlight_count + 1,
+          timestamps: [...existing.timestamps, new Date().toISOString()],
+          pinyin: pinyin || existing.pinyin,
+          definition: definition || existing.definition,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('[Highlighted Words] Error updating:', updateError);
+        return res.status(500).json({ error: updateError.message });
+      }
+
+      res.json({ word: data, updated: true });
+    } else {
+      // Insert new entry
+      const { data, error: insertError } = await supabase
+        .from('highlighted_words')
+        .insert({
+          user_id,
+          word,
+          pinyin: pinyin || '',
+          definition: definition || '',
+          highlight_count: 1,
+          timestamps: [new Date().toISOString()]
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('[Highlighted Words] Error inserting:', insertError);
+        return res.status(500).json({ error: insertError.message });
+      }
+
+      res.json({ word: data, created: true });
+    }
+  } catch (error) {
+    console.error('[Highlighted Words] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a highlighted word
+app.delete('/api/highlighted-words/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id is required' });
+    }
+
+    const { error } = await supabase
+      .from('highlighted_words')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user_id);
+
+    if (error) {
+      console.error('[Highlighted Words] Error deleting:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Highlighted Words] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend server running on http://0.0.0.0:${PORT}`);
 });

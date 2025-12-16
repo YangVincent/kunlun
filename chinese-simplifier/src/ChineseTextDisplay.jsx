@@ -10,7 +10,8 @@ export function ChineseTextDisplay({
   phrases = null,
   phraseTranslations = {},
   displayMode = 'tooltips',
-  uniqueId = 'default'
+  uniqueId = 'default',
+  onWordHighlight = null
 }) {
   const [activeCharIndex, setActiveCharIndex] = useState(null);
 
@@ -59,7 +60,7 @@ export function ChineseTextDisplay({
   };
 
   // Component to render a phrase with tooltip
-  const ChinesePhrase = ({ phrase, index, showPinyin = true, showPinyinAbove = false }) => {
+  const ChinesePhrase = ({ phrase, index, showPinyin = true, showPinyinAbove = false, onHighlight = null }) => {
     const [hoverActive, setHoverActive] = useState(false);
     const [tooltipStyle, setTooltipStyle] = useState({ opacity: 0 });
     const spanRef = useRef(null);
@@ -125,7 +126,12 @@ export function ChineseTextDisplay({
           }}
           onClick={(e) => {
             e.stopPropagation();
-            setActiveCharIndex(activeCharIndex === uniqueIndex ? null : uniqueIndex);
+            const wasActive = activeCharIndex === uniqueIndex;
+            setActiveCharIndex(wasActive ? null : uniqueIndex);
+            // Call highlight callback when opening tooltip (not closing)
+            if (!wasActive && onHighlight) {
+              onHighlight(phrase.text, phrasePinyin, translation);
+            }
           }}
         >
           {phrase.text.split('').map((char, idx) => {
@@ -161,7 +167,12 @@ export function ChineseTextDisplay({
         }}
         onClick={(e) => {
           e.stopPropagation();
-          setActiveCharIndex(activeCharIndex === uniqueIndex ? null : uniqueIndex);
+          const wasActive = activeCharIndex === uniqueIndex;
+          setActiveCharIndex(wasActive ? null : uniqueIndex);
+          // Call highlight callback when opening tooltip (not closing)
+          if (!wasActive && onHighlight) {
+            onHighlight(phrase.text, phrasePinyin, translation);
+          }
         }}
       >
         {phrase.text}
@@ -291,6 +302,7 @@ export function ChineseTextDisplay({
                         index={phrase.originalIndex}
                         showPinyin={false}
                         showPinyinAbove={true}
+                        onHighlight={onWordHighlight}
                       />
                     ))
                   ) : (
@@ -322,7 +334,7 @@ export function ChineseTextDisplay({
     return (
       <div className="tooltip-mode">
         {phrases.map((phrase, idx) => (
-          <ChinesePhrase key={idx} phrase={phrase} index={idx} />
+          <ChinesePhrase key={idx} phrase={phrase} index={idx} onHighlight={onWordHighlight} />
         ))}
       </div>
     );
