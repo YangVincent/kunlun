@@ -8,6 +8,14 @@
   overflow-x: hidden;
 }
 
+/* Auth Header */
+.auth-header {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  z-index: 10;
+}
+
 /* Header */
 .home-header {
   text-align: center;

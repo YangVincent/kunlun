@@ -1,23 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import './ChatInterface.css';
 import { ChineseTextDisplay, DisplayModeSelector } from './ChineseTextDisplay';
 import { supabase, getSessionId } from './supabaseClient';
+import { useAuth } from './AuthContext';
+import { AuthButton } from './AuthButton';
 
 export default function ChatInterface() {
+  const { user, loading: authLoading } = useAuth();
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [displayMode, setDisplayMode] = useState('tooltips'); // 'none', 'pinyin', 'tooltips'
   const [phrases, setPhrases] = useState({});
   const [phraseTranslations, setPhraseTranslations] = useState({});
-  const [sessionId] = useState(getSessionId());
   const messagesEndRef = useRef(null);
 
-  // Load chat history on mount
+  // Use user ID if logged in, otherwise fall back to anonymous session ID
+  const sessionId = useMemo(() => {
+    return user?.id || getSessionId();
+  }, [user]);
+
+  // Load chat history when session ID is determined
   useEffect(() => {
-    loadChatHistory();
-  }, []);
+    if (!authLoading) {
+      loadChatHistory();
+    }
+  }, [authLoading, sessionId]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -269,9 +278,12 @@ export default function ChatInterface() {
           <h1 style={{ margin: 0, fontSize: '1.3rem', fontFamily: 'var(--font-display)', color: 'var(--color-ink)' }}>
             聊天 · Chat
           </h1>
-          <Link to="/" className="back-btn" style={{ padding: '0.5rem 1rem', marginTop: 0 }}>
-            ← Back
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <AuthButton />
+            <Link to="/" className="back-btn" style={{ padding: '0.5rem 1rem', marginTop: 0 }}>
+              ← Back
+            </Link>
+          </div>
         </div>
 
         {/* Chat Messages */}

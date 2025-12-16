@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from './AuthContext'
 import Home from './Home'
 import ChineseSimplifier from './ChineseSimplifier'
 import NewsSearch from './NewsSearch'
@@ -8,16 +9,18 @@ import Listen from './Listen'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/simplifier" element={<ChineseSimplifier />} />
-        <Route path="/news" element={<NewsSearch />} />
-        <Route path="/chat" element={<ChatInterface />} />
-        <Route path="/reader" element={<Reader />} />
-        <Route path="/listen" element={<Listen />} />
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/simplifier" element={<ChineseSimplifier />} />
+          <Route path="/news" element={<NewsSearch />} />
+          <Route path="/chat" element={<ChatInterface />} />
+          <Route path="/reader" element={<Reader />} />
+          <Route path="/listen" element={<Listen />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
 
